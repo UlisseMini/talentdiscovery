@@ -2,81 +2,73 @@
 
 ## Inspiration
 
-We kept noticing the same pattern: the most talented engineers we know have tiny followings. A kid writes a compiler from scratch in Zig - 14 stars, 80 followers, no LinkedIn. Meanwhile, recruiters are fighting over the same pool of developers who already have 50K followers and a "open to work" banner.
+The most talented engineers we know have tiny followings. A kid writes a compiler from scratch in Zig - 14 stars, 80 followers, no LinkedIn. Meanwhile, recruiters are fighting over the same pool of developers who already have 50K followers and an "open to work" banner.
 
-The insight: **talent clusters socially**. Exceptional people follow other exceptional people. If you know 27 genuinely cracked developers, their combined social graph contains hundreds of undiscovered gems - you just need the right algorithm to find them.
+The insight: **talent clusters socially**. Exceptional people follow other exceptional people. If you start from people you *know* are great, their combined social graph contains hundreds of undiscovered gems hiding in plain sight.
 
-We wanted to build the tool that finds the person *before* they blow up.
+We wanted to build the tool that maps these hidden networks and lets anyone - not just programmers - explore them with natural language.
 
 ## What it does
 
-Talent Discovery crawls GitHub's social graph starting from 27 seed developers we know are exceptional, profiles 3,263 people in their extended networks, and uses multi-signal scoring to surface undiscovered talent.
+Talent Discovery intelligently crawls GitHub's social graph starting from 27 seed developers we know are exceptional, builds a rich dataset of 3,263 developers in their extended networks, and gives non-technical users two powerful ways to explore it:
 
-**Two interfaces:**
+**1. AI Intelligence Terminal** - A chat interface powered by a full Claude Code agent. You type natural language - "Who are the most active Rust developers in this network?" or "Generate a recruiting dossier on @username" - and the agent searches the dataset, cross-references 518 hackathon projects, analyzes network position, and streams back data-rich recommendations in real time. You can see every tool call the agent makes as it works. This isn't a simple RAG lookup - it's a real Claude Code instance with access to Bash, file reading, web search, and the full dataset, reasoning through your question live.
 
-**1. AI Intelligence Terminal** - A Claude-powered chat interface where you type natural language queries like "Find undiscovered Rust developers with fewer than 500 followers" or "Generate a recruiting dossier on @username." The agent searches the dataset, cross-references hackathon projects, analyzes network position, and streams back data-rich recommendations in real time. You can see every tool call it makes.
+**2. Network Explorer** - An interactive force-directed graph of 400 key developers with 1,874 follow-relationships. Every node is that developer's actual GitHub avatar with a colored ring showing how they were discovered. You can filter by language, community, or follower count. Click any node to see their full profile - repos, languages, commit history, which seed developers they're connected to, and their position in the network (PageRank, betweenness centrality, community membership). Drag nodes around, zoom into clusters, tune the physics in real time. A non-programmer can sit down and immediately start exploring who knows who and why they matter.
 
-**2. Network Explorer** - An interactive force-directed graph of 400 key developers with 1,874 edges. Every node renders the developer's GitHub avatar with a tier-colored ring. You can filter by language, community, follower count, and diamond score. Click any node to see their full profile, repos, graph centrality metrics, and which seeds they're connected to. Physics are tunable - adjust repulsion, gravity, link distance in real time.
-
-**The scoring is the core product:**
-
-- **Cracked Score** - Optimized for undiscovered talent. Log-scaled stars per year, youth multiplier (a 2-year-old account with 500 stars beats a 15-year-old account with 10K), famous penalty (>5K followers = already discovered), follow-farm detection, and network bonuses for appearing in multiple seed graphs.
-- **Diamond Score** - Pattern-matches repos against 60+ technical depth signals (compilers, proof assistants, FPGA, kernel, crypto). Flags "HIGH ALPHA" when someone has technical repos but <200 followers. Checks for strong languages (Rust, Haskell, Zig, Lean), academic affiliations, and cross-network validation.
-- **Graph Metrics** - PageRank, betweenness centrality, and Louvain community detection across the full network. Developers who bridge communities or have high centrality despite low follower counts are especially interesting.
+**The core value is the intelligent crawling and data collection.** Starting from 27 seeds, we crawl their followers and following lists via the GitHub GraphQL API, then profile every person with their repos, stars, commits, PRs, languages, organizations, and account age. We track *directionality* - who follows whom - and flag mutual follows as a stronger signal. Users appearing in multiple seed networks independently get flagged. The result is a rich, interconnected dataset that reveals structure no individual profile page could show you.
 
 ## How we built it
 
-**Data pipeline:** We start with 27 seed GitHub usernames. `crawl.py` hits the GitHub GraphQL API to get each seed's followers and following lists, then profiles every person with their repos, stars, commits, PRs, languages, and orgs. `batch_crawl.py` orchestrates this across all seeds with smart deduplication - users appearing in multiple seed networks get flagged as higher signal. `scrape.py` enriches 518 hackathon projects with repo metadata and contributor mappings.
+**Intelligent crawling:** `crawl.py` hits the GitHub GraphQL API to get a seed's full follower/following graph, then profiles every person with detailed repo analysis. `batch_crawl.py` orchestrates this across all 27 seeds with smart prioritization - with some seeds having 1000+ connections, we can't profile everyone. We built a priority system: profile users who appear in 2+ seed networks first (strongest signal), then mutual follows, then everyone from smaller networks. This got us from ~50K needed API calls down to ~5K while keeping the most interesting profiles. `scrape.py` separately enriches 518 hackathon projects with repo metadata and contributor mappings so we can cross-reference.
 
-**Scoring:** `analyze.py` runs the Diamond Score algorithm - regex-matching repo descriptions against technical signal patterns, checking for strong languages, cross-referencing network position, and flagging undervalued profiles. The Cracked Score is computed at server startup with the full age/output/fame/network formula.
+**Graph analysis:** `build_graph.py` uses NetworkX to compute PageRank (who's important in the network?), betweenness centrality (who bridges different communities?), and Louvain community detection (what clusters exist?) across a 400-node subgraph. Edges preserve directionality and mutual follow status.
 
-**Graph analysis:** `build_graph.py` uses NetworkX to compute PageRank, betweenness centrality, and Louvain community detection across a filtered 400-node subgraph. Edges track directionality (who follows whom) and mutual follow status.
+**Agentic backend:** FastAPI server with the Claude Code SDK powering a real agent. When a user asks a question, we pre-search the local dataset for relevant profiles and pass them as context to a Claude Code instance. The agent can reason about the data, compare developers, generate dossiers, and search the web for additional context - all streamed to the user via SSE with full tool-call visibility. An MCP tool server (`mcp_talent.py`) exposes structured search, profile lookup, network connections, hackathon project search, and live GitHub fetching as tools the agent can use.
 
-**Backend:** FastAPI server with the Claude Code SDK powering the AI agent. The agent gets pre-searched local results as context and generates responses with `max_turns=1` for speed. SSE streaming for real-time token delivery. MCP tool server (`mcp_talent.py`) exposes the dataset through structured tools.
+**Frontend:** Two single HTML files, zero build step. The chat terminal uses a dark terminal aesthetic with streaming markdown rendering and collapsible tool call traces. The network explorer uses the `force-graph` library with custom canvas rendering - each node is a GitHub avatar clipped to a circle with a colored ring, rendered at 60fps with labels, hover tooltips, and a full detail side panel.
 
-**Frontend:** Two single HTML files, zero build step. The chat terminal uses a dark terminal aesthetic with glass morphism, streaming markdown rendering, and tool call visibility. The network explorer uses the `force-graph` library with custom canvas rendering for avatar-clipped nodes with tier-colored rings.
-
-**Deployment:** Modal for cloud hosting with volume-mounted data. Locally, everything runs with `uv` inline script metadata - no requirements.txt, no venv, just `uv run server.py`.
+**Deployment:** Modal for cloud hosting with volume-mounted data. Locally, every Python script uses `uv` inline script metadata for dependencies - no requirements.txt, no venv, just `uv run server.py` and you're up.
 
 ## Challenges we ran into
 
-**GitHub API rate limits** were the biggest constraint. With 27 seeds and some having 1000+ followers, we needed to be strategic. We built a priority system: only fully profile users who appear in multiple seed networks, are mutual follows, or come from small networks (<500 people). This got us from needing ~50K API calls down to ~5K while keeping the most interesting profiles.
+**GitHub API rate limits** were the biggest constraint. The GraphQL API allows 5,000 points/hour, and profiling a single user costs ~2 points. With 27 seeds having networks of 100-2000 people each, brute-force profiling was impossible. Our tiered priority system (multi-network > mutual follow > small network) was essential to getting a rich dataset within rate limits.
 
-**Avatar CORS** was surprisingly tricky. `github.com/{user}.png` redirects to `avatars.githubusercontent.com` which strips CORS headers on the redirect. We had to figure out the direct `avatars.githubusercontent.com/{user}?s=64` URL format which supports `crossOrigin='anonymous'` properly.
+**Making Claude Code useful as a backend agent** required iteration. MCP tool integration via `create_sdk_mcp_server()` had a breaking bug (`CLIConnectionError: ProcessTransport is not ready for writing`). We worked around it by pre-computing search results locally and passing rich context to single-turn `query()` calls. The `PermissionMode` turned out to be a `Literal` type, not an enum - `"bypassPermissions"` as a string, not `PermissionMode.BYPASS_PERMISSIONS`. Small things, but they cost hours.
 
-**Scoring calibration** required iteration. Our first Cracked Score was dominated by mega-repos (one 50K-star repo would bury everyone). Switching to log-scaled stars fixed this. The youth multiplier also needed tuning - we settled on an exponential curve where accounts under 2 years get 5x and accounts over 12 years get 0.3x.
+**Avatar rendering in the graph** was surprisingly hard. `github.com/{user}.png` redirects to `avatars.githubusercontent.com` which strips CORS headers on the redirect, so `crossOrigin='anonymous'` fails. We had to discover the direct `avatars.githubusercontent.com/{user}?s=64` URL which properly supports CORS. Then click events on the settings panel were propagating through to the graph canvas behind it, toggling things off - needed `stopPropagation()` fixes.
 
-**Claude Code SDK MCP tools** had a breaking bug where `create_sdk_mcp_server()` with `@tool` decorators would fail with `CLIConnectionError`. We worked around it by pre-computing search results locally and passing them as context to single-turn `query()` calls instead.
+**Keeping the graph readable at 400 nodes** required careful tuning. Too much repulsion and the graph explodes to fill the screen; too little and it collapses into an unreadable blob. We exposed physics controls (repulsion, link distance, gravity) directly to the user so they can tune it themselves, which turned out to be the right call.
 
 ## Accomplishments that we're proud of
 
-- **The scoring actually works.** When we sort by Cracked Score, the top results are genuinely impressive developers with tiny followings who would never show up in a traditional search. The Diamond Score's "HIGH ALPHA" flag consistently finds people writing compilers and proof assistants with <100 followers.
+- **The dataset is genuinely useful.** 3,263 developers profiled from 27 seeds with full repo analysis, commit history, PR counts, org memberships, and cross-network relationship mapping. 518 hackathon projects enriched and cross-referenced. You can actually discover people through this that you'd never find on LinkedIn or GitHub search.
 
-- **3,263 developers profiled** from 27 seeds with full repo analysis, commit history, PR counts, org memberships, and cross-network relationship mapping. 518 hackathon projects enriched and cross-referenced.
+- **Non-programmers can use it.** The whole point was making this accessible. Type a question in English, get real answers backed by data. Or open the graph explorer and click around. No SQL, no API calls, no code.
 
-- **The network visualization is beautiful.** 400 nodes with actual GitHub avatars, tier-colored rings, Louvain communities, tunable physics, and a full filter/search/detail panel. It genuinely reveals structure - you can see clusters of Hack Club developers, systems programmers, and ML researchers naturally separate.
+- **The network visualization reveals real structure.** You can visually see clusters of Hack Club developers, systems programmers, and ML researchers naturally separate into communities. Developers who bridge these clusters are immediately visible as the nodes connecting different color groups.
 
-- **Real-time AI agent** that can answer "find me a Rust developer connected to 3+ seeds with fewer than 500 followers" and stream back specific, data-backed recommendations with tool call transparency.
+- **Full agentic Claude Code in a web app.** Not a toy chatbot - a real Claude Code instance that can run Python, search the web, read files, and reason through multi-step questions about the dataset. With full tool call transparency so you can see how it's thinking.
 
-- **Zero build tooling.** Every script is self-contained with `uv` inline metadata. Both frontends are single HTML files. `uv run server.py` and you're running.
+- **Zero build tooling.** Every script is self-contained with `uv` inline metadata. Both frontends are single HTML files loading from CDN. `uv run server.py` and you're running. We spent time on the product, not on toolchain configuration.
 
 ## What we learned
 
-- **Social graphs are incredibly high-signal for talent.** Mutual follows between known-exceptional developers are a stronger signal than any resume keyword. Someone who appears in 4+ seed networks independently is almost always interesting.
+- **Social graphs are incredibly high-signal.** Mutual follows between known-exceptional developers are a stronger signal than any resume keyword. Someone who appears in 4+ seed networks independently is almost always worth looking at.
 
-- **Famous ≠ best.** Our scoring penalizes fame by design, and the results validate this. Many of the highest-cracked-score developers have <500 followers but repos that demonstrate deep technical skill.
+- **Graph algorithms reveal hidden structure you can't see from individual profiles.** PageRank on the follow graph surfaces "connector" developers who bridge communities. Betweenness centrality finds people who are the sole link between two clusters. Louvain community detection finds natural groupings that map to real-world affiliations (same hackathon community, same programming niche, same school).
 
-- **Graph algorithms reveal hidden structure.** PageRank on the follow graph surfaces "connector" developers who bridge communities. Betweenness centrality finds people who are the sole link between two clusters. These metrics correlate with, but are distinct from, raw follower counts.
+- **Claude Code SDK works for building real agent-powered products**, but you have to work with its constraints. Pre-computing context locally and using single-turn calls with `include_partial_messages=True` for streaming is the reliable pattern. Multi-turn tool use with MCP is the dream but not production-ready yet.
 
-- **Claude Code SDK is powerful but immature.** MCP tool integration has rough edges, but the `query()` API with streaming works well for building agent-powered interfaces. Pre-computing context and using single-turn calls is more reliable than multi-turn tool use.
+- **Intelligent crawl prioritization matters more than crawling everything.** Our tiered system (multi-network users > mutual follows > small networks) gave us 80% of the value with 10% of the API calls. The most interesting developers are almost always the ones who appear in multiple independent seed networks.
 
 ## What's next for Graph-based Agentic Talent Discovery
 
-- **Deeper crawling** - Go 2 hops out from seeds instead of 1. Profile the followers of the highest-scored non-seed developers to find even more hidden talent.
-- **Temporal analysis** - Track how developer activity changes over time. Someone whose commit velocity is accelerating is more interesting than someone who peaked 3 years ago.
-- **Repo-level graph** - Build a contribution graph (who contributes to whose repos) in addition to the follow graph. Shared repo contributions are an even stronger signal than follows.
-- **Outreach integration** - Surface contact information and generate personalized outreach messages based on the developer's actual work, not generic templates.
-- **Live monitoring** - Continuously crawl and alert when a new developer enters the network or an existing one's score spikes (new breakout repo, joined interesting org, etc.).
+- **Deeper crawling** - Go 2 hops out from seeds. Profile the most-connected non-seed developers' networks to discover an entirely new ring of hidden talent.
+- **Contribution graph** - Build a second graph layer based on who contributes to whose repos, not just who follows whom. Shared contributions are an even stronger signal than follows.
+- **Temporal analysis** - Track developer activity over time. Someone whose commit velocity is accelerating is more interesting than someone who peaked 3 years ago.
+- **Live monitoring** - Continuously re-crawl and alert when new developers enter the network or when someone ships a breakout repo.
+- **Multi-turn agent sessions** - Let the agent maintain conversation context across questions so users can drill deeper ("tell me more about that third person" / "compare them to the Rust developers you found earlier").
 
 ## Built With
 
