@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TALENT_DISCOVERY // Intelligence Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #06080a;
+  --bg-elevated: #0c0f12;
+  --bg-surface: #111518;
+  --bg-hover: #181c20;
+  --border: #1e2328;
+  --border-active: #2a3038;
+  --text: #c8cdd2;
+  --text-secondary: #6b7280;
+  --text-dim: #3b4048;
+  --green: #22c55e;
+  --green-dim: #166534;
+  --green-glow: rgba(34, 197, 94, 0.12);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245, 158, 11, 0.15);
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
+  --serif: 'Instrument Serif', 'Georgia', serif;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* Noise texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* ===== Layout ===== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 780px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ===== Top Bar ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-logo {
+  width: 7px;
+  height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--green), 0 0 20px rgba(34, 197, 94, 0.3);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green), 0 0 20px rgba(34, 197, 94, 0.3); }
+  50% { opacity: 0.6; box-shadow: 0 0 4px var(--green), 0 0 10px rgba(34, 197, 94, 0.15); }
+}
+
+.topbar-title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.topbar-title span {
+  color: var(--green);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-stat {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+.topbar-stat b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.auth-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.auth-btn:hover {
+  border-color: var(--green-dim);
+  color: var(--green);
+  background: var(--green-glow);
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.user-pill img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+.user-pill button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.user-pill button:hover { color: var(--red); }
+
+/* ===== Messages Area ===== */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 24px;
+  scroll-behavior: smooth;
+}
+
+/* ===== Welcome Screen ===== */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 140px);
+  padding: 40px 20px;
+  animation: welcome-in 0.8s ease-out;
+}
+
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-sigil {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border-active);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28px;
+  position: relative;
+}
+.welcome-sigil::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+.welcome-sigil svg {
+  width: 20px;
+  height: 20px;
+  color: var(--green);
+}
+
+.welcome h1 {
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text);
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.welcome-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.8;
+  margin-bottom: 36px;
+}
+.welcome-sub strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.welcome-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.welcome-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  line-height: 1.5;
+}
+.welcome-chip:hover {
+  border-color: var(--border-active);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.welcome-chip .chip-icon {
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+
+/* ===== Message Styles ===== */
+.msg {
+  margin-top: 20px;
+  animation: msg-in 0.25s ease-out;
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-user {
+  display: flex;
+  justify-content: flex-end;
+}
+.msg-user .msg-bubble {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px 6px 2px 6px;
+  padding: 10px 14px;
+  max-width: 75%;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.msg-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg-label {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-left: 2px;
+}
+
+.msg-assistant .msg-bubble {
+  background: transparent;
+  padding: 0 2px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+/* Markdown rendering */
+.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+  margin: 18px 0 8px;
+  letter-spacing: -0.3px;
+}
+.msg-bubble h1 { font-size: 16px; }
+.msg-bubble h2 { font-size: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.msg-bubble h3 { font-size: 13px; color: var(--green); }
+
+.msg-bubble p { margin: 6px 0; }
+
+.msg-bubble strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.msg-bubble em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.msg-bubble code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: var(--amber);
+}
+
+.msg-bubble pre {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.msg-bubble pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.msg-bubble ul, .msg-bubble ol {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+.msg-bubble li {
+  margin: 3px 0;
+}
+.msg-bubble li::marker {
+  color: var(--text-dim);
+}
+
+.msg-bubble hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+
+.msg-bubble a {
+  color: var(--green);
+  text-decoration: none;
+}
+.msg-bubble a:hover {
+  text-decoration: underline;
+}
+
+.msg-bubble blockquote {
+  border-left: 2px solid var(--border-active);
+  padding-left: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+
+.msg-bubble table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 11px;
+}
+.msg-bubble th, .msg-bubble td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+.msg-bubble th {
+  background: var(--bg-surface);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+/* Tool calls */
+.tool-call {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.tool-call:hover {
+  border-color: var(--amber);
+  color: var(--text-secondary);
+  background: rgba(245, 158, 11, 0.03);
+}
+.tool-call.active {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.tool-call .tool-chevron {
+  font-size: 8px;
+  transition: transform 0.15s;
+}
+.tool-call.expanded .tool-chevron {
+  transform: rotate(90deg);
+}
+
+.tool-call .tool-name {
+  font-weight: 500;
+  color: var(--amber);
+}
+
+.tool-call .tool-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.tool-detail {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 6px 10px 6px 20px;
+  border-left: 2px solid var(--border);
+  display: none;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.tool-detail.visible {
+  display: block;
+}
+
+/* Meta / cost line */
+.msg-meta {
+  font-size: 9px;
+  color: var(--text-dim);
+  padding: 8px 2px 0;
+  letter-spacing: 0.5px;
+  display: flex;
+  gap: 12px;
+}
+
+/* Typing indicator */
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 2px;
+}
+.typing span {
+  width: 4px;
+  height: 4px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-dot {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+/* ===== Input Area ===== */
+.input-area {
+  flex-shrink: 0;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  position: relative;
+  z-index: 10;
+}
+
+.input-status {
+  font-size: 9px;
+  color: var(--amber);
+  letter-spacing: 0.5px;
+  padding: 0 2px 6px;
+  min-height: 18px;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.input-field {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  outline: none;
+  resize: none;
+  min-height: 42px;
+  max-height: 120px;
+  transition: border-color 0.2s;
+}
+.input-field:focus {
+  border-color: var(--border-active);
+}
+.input-field::placeholder {
+  color: var(--text-dim);
+}
+
+.send-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--green);
+  border: none;
+  border-radius: 4px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  height: 42px;
+}
+.send-btn:hover {
+  background: #16a34a;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+}
+.send-btn:disabled {
+  background: var(--border);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.input-hint {
+  font-size: 9px;
+  color: var(--text-dim);
+  padding: 6px 2px 0;
+  display: flex;
+  justify-content: space-between;
+}
+.input-hint kbd {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 9px;
+}
+
+/* ===== Error toast ===== */
+.error-toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-surface);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 10px 16px;
+  font-size: 11px;
+  color: var(--red);
+  z-index: 100;
+  animation: toast-in 0.3s ease-out;
+  max-width: 500px;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .welcome-grid { grid-template-columns: 1fr; }
+  .welcome h1 { font-size: 26px; }
+  .topbar-stat { display: none; }
+  .msg-user .msg-bubble { max-width: 90%; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-logo"></div>
+      <div class="topbar-title"><span>talent</span>_discovery</div>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-stat" id="topbar-stats"></span>
+      <div id="auth-area">
+        <a class="auth-btn" href="/auth/github">sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div class="messages" id="messages">
+    <div class="welcome" id="welcome">
+      <div class="welcome-sigil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+      </div>
+      <h1>Intelligence Terminal</h1>
+      <div class="welcome-sub">
+        Query a curated dataset of <strong>3,263 developers</strong> and <strong>518 hackathon projects</strong> crawled from interconnected GitHub networks. The agent runs code, searches the web, and analyzes profiles in real time.
+      </div>
+      <div class="welcome-grid">
+        <button class="welcome-chip" onclick="send('Find the top 5 undiscovered Rust developers with fewer than 500 followers')">
+          <span class="chip-icon">&gt;</span> undiscovered Rust talent
+        </button>
+        <button class="welcome-chip" onclick="send('Who are the youngest developers with the highest cracked scores?')">
+          <span class="chip-icon">&gt;</span> youngest high-output engineers
+        </button>
+        <button class="welcome-chip" onclick="send('Find ML engineers who won hackathons and have under 1000 followers')">
+          <span class="chip-icon">&gt;</span> hackathon-winning ML engineers
+        </button>
+        <button class="welcome-chip" onclick="send('Generate a dossier on the developer with the highest cracked score')">
+          <span class="chip-icon">&gt;</span> top developer dossier
+        </button>
+        <button class="welcome-chip" onclick="send('Which developers are connected to the most seed networks? Show their shared connections.')">
+          <span class="chip-icon">&gt;</span> network-verified talent
+        </button>
+        <button class="welcome-chip" onclick="send('Compare the top 3 TypeScript developers by stars, commits, and account age')">
+          <span class="chip-icon">&gt;</span> TypeScript developer comparison
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-status" id="input-status"></div>
+    <div class="input-row">
+      <textarea class="input-field" id="input-field" rows="1" placeholder="query the database..."></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendFromInput()">run</button>
+    </div>
+    <div class="input-hint">
+      <span><kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for newline</span>
+      <span id="session-indicator"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Configure marked =====
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+  headerIds: false,
+  mangle: false,
+});
+
+// ===== State =====
+let sessionId = null;
+let eventSource = null;
+let isStreaming = false;
+
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input-field');
+const sendBtn = document.getElementById('send-btn');
+const statusEl = document.getElementById('input-status');
+const sessionEl = document.getElementById('session-indicator');
+
+// ===== Init =====
+async function init() {
+  // Load stats
+  try {
+    const resp = await fetch('/api/stats');
+    const stats = await resp.json();
+    document.getElementById('topbar-stats').innerHTML =
+      `<b>${stats.total_developers.toLocaleString()}</b> devs &middot; <b>${(stats.total_stars / 1000).toFixed(0)}K</b> stars &middot; <b>${stats.total_projects}</b> projects`;
+    // Update welcome text with live numbers
+    const sub = document.querySelector('.welcome-sub');
+    if (sub) {
+      sub.innerHTML = `Query a curated dataset of <strong>${stats.total_developers.toLocaleString()} developers</strong> and <strong>${stats.total_projects} hackathon projects</strong> crawled from interconnected GitHub networks. The agent runs code, searches the web, and analyzes profiles in real time.`;
+    }
+  } catch {}
+
+  // Check auth
+  try {
+    const resp = await fetch('/auth/me');
+    const auth = await resp.json();
+    if (auth.authenticated) {
+      document.getElementById('auth-area').innerHTML = `
+        <div class="user-pill">
+          <img src="${esc(auth.avatar_url)}" alt="">
+          <span>${esc(auth.login)}</span>
+          <button onclick="logout()">logout</button>
+        </div>
+      `;
+    }
+  } catch {}
+}
+
+async function logout() {
+  await fetch('/auth/logout', { method: 'POST' });
+  document.getElementById('auth-area').innerHTML = '<a class="auth-btn" href="/auth/github">sign in</a>';
+}
+
+// ===== Input handling =====
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendFromInput();
+  }
+});
+
+// Auto-resize textarea
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+});
+
+function sendFromInput() {
+  const q = inputEl.value.trim();
+  if (!q || isStreaming) return;
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  send(q);
+}
+
+// ===== Send message =====
+function send(q) {
+  if (isStreaming) return;
+
+  // Remove welcome
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+
+  // Add user message
+  appendMsg('user', q);
+
+  // Start streaming
+  isStreaming = true;
+  sendBtn.disabled = true;
+  statusEl.textContent = '';
+
+  let fullText = '';
+  let toolCalls = [];
+  let assistantEl = null;
+  let bubbleEl = null;
+  let toolsContainer = null;
+
+  // Create assistant message shell
+  assistantEl = document.createElement('div');
+  assistantEl.className = 'msg msg-assistant';
+
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = 'agent';
+  assistantEl.appendChild(label);
+
+  toolsContainer = document.createElement('div');
+  assistantEl.appendChild(toolsContainer);
+
+  bubbleEl = document.createElement('div');
+  bubbleEl.className = 'msg-bubble';
+  assistantEl.appendChild(bubbleEl);
+
+  // Typing indicator
+  const typingEl = document.createElement('div');
+  typingEl.className = 'typing';
+  typingEl.innerHTML = '<span></span><span></span><span></span>';
+  assistantEl.appendChild(typingEl);
+
+  messagesEl.appendChild(assistantEl);
+  scrollToBottom();
+
+  // Connect SSE
+  let url = `/api/chat?q=${encodeURIComponent(q)}`;
+  if (sessionId) url += `&session_id=${encodeURIComponent(sessionId)}`;
+
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource(url);
+
+  eventSource.addEventListener('text', e => {
+    const data = JSON.parse(e.data);
+    fullText = data.text;
+    typingEl.style.display = 'none';
+    bubbleEl.innerHTML = marked.parse(fullText);
+    scrollToBottom();
+  });
+
+  eventSource.addEventListener('tool_call', e => {
+    const data = JSON.parse(e.data);
+    toolCalls.push(data);
+    const tc = createToolCall(data, true);
+    toolsContainer.appendChild(tc);
+    statusEl.textContent = `running ${data.tool}...`;
+    scrollToBottom();
+  });
+
+  eventSource.addEventListener('tool_result', e => {
+    // Mark last tool as done
+    const lastSpinner = toolsContainer.querySelector('.tool-call:last-child .tool-spinner');
+    if (lastSpinner) {
+      lastSpinner.style.display = 'none';
+    }
+    statusEl.textContent = '';
+  });
+
+  eventSource.addEventListener('done', e => {
+    const data = JSON.parse(e.data);
+    if (data.session_id) {
+      sessionId = data.session_id;
+      sessionEl.textContent = `session: ${sessionId.slice(0, 8)}`;
+    }
+
+    // Final render
+    typingEl.remove();
+    bubbleEl.innerHTML = marked.parse(fullText);
+
+    // Add meta line
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    let metaHtml = `<span>${data.duration}s</span>`;
+    if (data.cost) metaHtml += `<span>$${data.cost.toFixed(4)}</span>`;
+    if (data.turns) metaHtml += `<span>${data.turns} turns</span>`;
+    meta.innerHTML = metaHtml;
+    assistantEl.appendChild(meta);
+
+    cleanup();
+    scrollToBottom();
+  });
+
+  eventSource.addEventListener('error', e => {
+    if (e.data) {
+      const data = JSON.parse(e.data);
+      typingEl.remove();
+      showError(data.error);
+    }
+    cleanup();
+  });
+
+  eventSource.onerror = () => {
+    if (isStreaming) cleanup();
+  };
+
+  function cleanup() {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    isStreaming = false;
+    sendBtn.disabled = false;
+    statusEl.textContent = '';
+    const remaining = assistantEl?.querySelector('.typing');
+    if (remaining) remaining.remove();
+  }
+}
+
+// ===== DOM helpers =====
+function appendMsg(role, text) {
+  const el = document.createElement('div');
+  el.className = `msg msg-${role}`;
+  if (role === 'user') {
+    el.innerHTML = `<div class="msg-bubble">${esc(text)}</div>`;
+  }
+  messagesEl.appendChild(el);
+  scrollToBottom();
+}
+
+function createToolCall(data, isActive) {
+  const wrapper = document.createElement('div');
+
+  const tc = document.createElement('div');
+  tc.className = 'tool-call' + (isActive ? ' active' : '');
+  tc.innerHTML = `
+    <span class="tool-chevron">&#9654;</span>
+    <span class="tool-name">${esc(data.tool)}</span>
+    <span style="color: var(--text-dim)">${esc((data.input || '').slice(0, 60))}</span>
+    ${isActive ? '<span class="tool-spinner"></span>' : ''}
+  `;
+
+  const detail = document.createElement('div');
+  detail.className = 'tool-detail';
+  detail.textContent = data.input || '';
+
+  tc.addEventListener('click', () => {
+    tc.classList.toggle('expanded');
+    detail.classList.toggle('visible');
+  });
+
+  wrapper.appendChild(tc);
+  wrapper.appendChild(detail);
+  return wrapper;
+}
+
+function showError(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = msg.slice(0, 200);
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ===== Start =====
+init();
+</script>
+</body>
+</html>

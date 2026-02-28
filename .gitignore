@@ -1,0 +1,4 @@
+data/
+enriched_winners.json
+__pycache__/
+.env
