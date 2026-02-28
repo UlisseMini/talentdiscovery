@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TALENT_DISCOVERY // Promising Developers</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #06080a;
+  --bg-elevated: #0c0f12;
+  --bg-surface: #111518;
+  --border: #1e2328;
+  --border-active: #2a3038;
+  --text: #c8cdd2;
+  --text-secondary: #6b7280;
+  --text-dim: #3b4048;
+  --green: #22c55e;
+  --green-dim: #166534;
+  --green-glow: rgba(34, 197, 94, 0.12);
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --red: #ef4444;
+  --purple: #a78bfa;
+  --mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
+  --serif: 'Instrument Serif', 'Georgia', serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  position: relative;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Topbar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(6, 8, 10, 0.92);
+  backdrop-filter: blur(12px);
+}
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+.topbar-logo {
+  width: 7px; height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--green), 0 0 20px rgba(34,197,94,0.3);
+}
+.topbar-title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.topbar-title span { color: var(--green); }
+.back-link {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.back-link:hover {
+  border-color: var(--green-dim);
+  color: var(--green);
+}
+
+/* Content */
+.content {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.page-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.page-header h1 {
+  font-family: var(--serif);
+  font-size: 36px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.page-header .subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.8;
+  max-width: 560px;
+}
+
+/* Tier headings */
+.tier {
+  margin-top: 48px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.tier h2 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.tier-1 h2 { color: var(--green); }
+.tier-2 h2 { color: var(--amber); }
+.tier-3 h2 { color: var(--purple); }
+
+/* Developer cards */
+.dev-card {
+  margin: 20px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  transition: border-color 0.15s;
+}
+.dev-card:hover {
+  border-color: var(--border-active);
+}
+
+.dev-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dev-login {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+  text-decoration: none;
+}
+.dev-login:hover { text-decoration: underline; }
+.dev-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.dev-location {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.dev-affiliation {
+  font-size: 10px;
+  color: var(--amber);
+}
+
+.dev-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.dev-stats b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.dev-repos {
+  margin: 8px 0;
+}
+.repo-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 7px;
+  margin: 2px 3px 2px 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+.repo-tag .stars {
+  color: var(--amber);
+  margin-left: 3px;
+}
+.repo-tag .lang {
+  color: var(--text-dim);
+  margin-left: 3px;
+}
+
+.dev-langs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+.lang-pill {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--bg-surface);
+  color: var(--text-dim);
+}
+
+.dev-why {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(30, 35, 40, 0.5);
+}
+.dev-why strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.dev-signals {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.signal {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.3px;
+}
+.signal-mutual {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--blue);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.signal-org {
+  background: rgba(167, 139, 250, 0.1);
+  color: var(--purple);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+}
+
+/* Tier 3 compact list */
+.compact-list {
+  margin-top: 16px;
+}
+.compact-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(30, 35, 40, 0.4);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.compact-item:last-child { border-bottom: none; }
+.compact-item .dev-login { font-size: 12px; }
+.compact-item .compact-desc {
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Footer */
+.footer {
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="topbar-brand" href="/">
+    <div class="topbar-logo"></div>
+    <div class="topbar-title"><span>talent</span>_discovery</div>
+  </a>
+  <a class="back-link" href="/">back to terminal</a>
+</div>
+
+<div class="content">
+  <div class="page-header">
+    <h1>Promising Developers</h1>
+    <div class="subtitle">
+      Crawled ~3,300 GitHub profiles across 26 seed developers' networks. Hand-picked diamonds in the rough: people whose repos show real depth but who don't self-promote or have high visibility.
+    </div>
+  </div>
+
+  <!-- TIER 1 -->
+  <div class="tier tier-1"><h2>Tier 1 &mdash; Highest Conviction</h2></div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/someone13574" target="_blank">@someone13574</a>
+      <span class="dev-name">Owen Law</span>
+      <span class="dev-location">Ottawa</span>
+    </div>
+    <div class="dev-stats"><b>18</b> followers &middot; <b>43</b> stars &middot; 261 commits &middot; 47 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">risc-v-cpu <span class="stars">4&#9733;</span> <span class="lang">SystemVerilog</span></span>
+      <span class="repo-tag">zed-verilog-extension <span class="stars">22&#9733;</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">SystemVerilog</span><span class="lang-pill">C</span><span class="lang-pill">Rust</span>
+    </div>
+    <div class="dev-why">Building a 6-stage pipelined RISC-V CPU from scratch on FPGAs at 18 followers. People who design CPUs for fun are exceedingly rare.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/mb64" target="_blank">@mb64</a>
+      <span class="dev-name">Mark Barbone</span>
+    </div>
+    <div class="dev-stats"><b>75</b> followers &middot; <b>218</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">sel <span class="stars">55&#9733;</span> <span class="lang">Lisp in sed</span></span>
+      <span class="repo-tag">LC-interpreter <span class="stars">32&#9733;</span> <span class="lang">C</span></span>
+      <span class="repo-tag">xtt <span class="stars">27&#9733;</span> <span class="lang">OCaml</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Rust</span><span class="lang-pill">OCaml</span><span class="lang-pill">sed</span><span class="lang-pill">C</span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">mutual: slightknack</span></div>
+    <div class="dev-why">A Lisp in sed. A lambda calculus compiler. Cubical type theory. Extraordinary theoretical CS depth with almost no public presence.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/0xWOLAND" target="_blank">@0xWOLAND</a>
+      <span class="dev-name">Bhargav Annem</span>
+      <span class="dev-location">Pasadena, CA</span>
+      <span class="dev-affiliation">Caltech</span>
+    </div>
+    <div class="dev-stats"><b>100</b> followers &middot; <b>34</b> stars &middot; 581 commits &middot; 43 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">tinybfv <span class="stars">8&#9733;</span> <span class="lang">Rust</span></span>
+      <span class="repo-tag">chiquito-vm <span class="stars">5&#9733;</span></span>
+      <span class="repo-tag">fast-ntt <span class="stars">4&#9733;</span> <span class="lang">Rust</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Rust</span><span class="lang-pill">Python</span><span class="lang-pill">Zig</span>
+    </div>
+    <div class="dev-why">Homomorphic encryption, zero-knowledge VMs, Number Theoretic Transforms from scratch at Caltech. The crypto/ZK depth is real.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/quantumish" target="_blank">@quantumish</a>
+    </div>
+    <div class="dev-stats"><b>30</b> followers &middot; <b>43</b> stars &middot; 82 commits</div>
+    <div class="dev-repos">
+      <span class="repo-tag">shacuda <span class="stars">13&#9733;</span> <span class="lang">CUDA</span></span>
+      <span class="repo-tag">yoctograd <span class="stars">6&#9733;</span> <span class="lang">C</span></span>
+      <span class="repo-tag">zk-SNARK</span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">C</span><span class="lang-pill">C++</span><span class="lang-pill">CUDA</span><span class="lang-pill">Emacs Lisp</span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">mutual of seed</span></div>
+    <div class="dev-why">GPU-accelerated SHA-256 in CUDA, autodiff from scratch in C, ZK proofs. Systems+crypto+ML stack at 30 followers.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/ellenjxu" target="_blank">@ellenjxu</a>
+      <span class="dev-name">Ellen Xu</span>
+      <span class="dev-affiliation">Stanford</span>
+    </div>
+    <div class="dev-stats"><b>98</b> followers &middot; <b>40</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">mango-chess <span class="stars">12&#9733;</span> <span class="lang">RISC-V/C</span></span>
+      <span class="repo-tag">spike-the-biker <span class="stars">8&#9733;</span></span>
+      <span class="repo-tag">tinygym <span class="stars">6&#9733;</span></span>
+      <span class="repo-tag">controlzero</span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Python</span><span class="lang-pill">C</span>
+    </div>
+    <div class="dev-signals">
+      <span class="signal signal-mutual">mutual: kdrag0n, Uzay-G</span>
+      <span class="signal signal-org">Comma.ai Hack 4 winner</span>
+    </div>
+    <div class="dev-why">Hardware (RISC-V chess), RL from scratch (AlphaZero), robotics (sim2real diffusion), and Comma.ai hackathon winner. Breadth of hard problems at low star counts is the signal.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/profsucrose" target="_blank">@profsucrose</a>
+      <span class="dev-name">Prof. Sucrose</span>
+    </div>
+    <div class="dev-stats"><b>99</b> followers &middot; <b>68</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">rustycraft <span class="stars">25&#9733;</span> <span class="lang">Rust/Vulkan</span></span>
+      <span class="repo-tag">bml <span class="stars">10&#9733;</span></span>
+      <span class="repo-tag">cevm <span class="stars">9&#9733;</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Rust</span><span class="lang-pill">TypeScript</span><span class="lang-pill">C</span><span class="lang-pill">Python</span>
+    </div>
+    <div class="dev-why">Voxel engine in Rust+Vulkan, custom scripting language, EVM implementation, RL. Four totally different hard domains. Bio: "Bad software developer" = anti-marketing energy.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/rubydusa" target="_blank">@rubydusa</a>
+      <span class="dev-name">Ram</span>
+    </div>
+    <div class="dev-stats"><b>18</b> followers &middot; <b>51</b> stars &middot; 227 commits &middot; 32 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">circom-lsp <span class="stars">33&#9733;</span> <span class="lang">Rust</span></span>
+      <span class="repo-tag">proof-of-life <span class="stars">10&#9733;</span></span>
+      <span class="repo-tag">bls12-381-evm-heaven <span class="stars">3&#9733;</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Solidity</span><span class="lang-pill">Rust</span><span class="lang-pill">Circom</span><span class="lang-pill">Prolog</span>
+    </div>
+    <div class="dev-why">Built an LSP for a ZK language. Game of Life in ZK circuits. Uses Prolog. 18 followers. Deeply technical crypto work with zero self-promotion.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/pepsipu" target="_blank">@pepsipu</a>
+      <span class="dev-name">Sammy Hajhamid</span>
+      <span class="dev-location">California</span>
+      <span class="dev-affiliation">@neuralink</span>
+    </div>
+    <div class="dev-stats"><b>161</b> followers &middot; <b>142</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">xinOS-old <span class="stars">29&#9733;</span></span>
+      <span class="repo-tag">OSpaint <span class="stars">27&#9733;</span></span>
+      <span class="repo-tag">aski <span class="stars">24&#9733;</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">C</span><span class="lang-pill">Rust</span><span class="lang-pill">Assembly</span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-org">redpwn CTF</span><span class="signal signal-org">dicegang CTF</span></div>
+    <div class="dev-why">OS from scratch, custom assembly language, memory allocator, CTF competitor, now at Neuralink. The hobby OS to Neuralink pipeline.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/ColexDev" target="_blank">@ColexDev</a>
+      <span class="dev-name">Cole</span>
+      <span class="dev-affiliation">Garmin / Purdue</span>
+    </div>
+    <div class="dev-stats"><b>40</b> followers &middot; <b>25</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">ParOS <span class="stars">14&#9733;</span> <span class="lang">64-bit OS</span></span>
+      <span class="repo-tag">Kos <span class="stars">2&#9733;</span> <span class="lang">C++</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">mutual of seed</span><span class="signal signal-org">purduerov, sigbots, electric racing</span></div>
+    <div class="dev-why">Hobby OS writer, embedded at Garmin, three Purdue engineering orgs (ROV, robotics, electric racing). 40 followers for someone building operating systems and underwater robots.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/fraware" target="_blank">@fraware</a>
+      <span class="dev-name">Mat&eacute;o H. Petel</span>
+      <span class="dev-affiliation">Stanford</span>
+    </div>
+    <div class="dev-stats"><b>82</b> followers &middot; <b>106</b> stars &middot; 502 commits &middot; 17 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">leanverifier <span class="stars">80&#9733;</span> <span class="lang">Lean</span></span>
+      <span class="repo-tag">chaoslabs <span class="stars">6&#9733;</span> <span class="lang">Go</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Python</span><span class="lang-pill">Lean</span><span class="lang-pill">Go</span><span class="lang-pill">TypeScript</span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">via Jemoka + ClaireBookworm</span></div>
+    <div class="dev-why">Formal verification in Lean at Stanford. Theorem proving meets practical software &mdash; one of the highest-signal research areas right now.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/lucidLuckylee" target="_blank">@lucidLuckylee</a>
+      <span class="dev-name">Luckylee</span>
+      <span class="dev-location">Berlin</span>
+    </div>
+    <div class="dev-stats"><b>67</b> followers &middot; <b>14</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">LightSync <span class="stars">7&#9733;</span> <span class="lang">Cairo</span></span>
+      <span class="repo-tag">bitvm_proc_macro <span class="stars">1&#9733;</span> <span class="lang">Rust</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Rust</span><span class="lang-pill">Cairo</span><span class="lang-pill">C++</span><span class="lang-pill">Nix</span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-org">ZeroSync</span></div>
+    <div class="dev-why">ZeroSync team member (Bitcoin ZK proofs). Cairo, BitVM, Bitcoin header validation. Cutting-edge ZK/Bitcoin work at 67 followers.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/faresbakhit" target="_blank">@faresbakhit</a>
+      <span class="dev-name">Fares A. Bakhit</span>
+      <span class="dev-location">Cairo, Egypt</span>
+      <span class="dev-affiliation">Cairo University CS</span>
+    </div>
+    <div class="dev-stats"><b>43</b> followers &middot; <b>109</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">ayin <span class="stars">99&#9733;</span> <span class="lang">GPU compute C++</span></span>
+      <span class="repo-tag">evor <span class="stars">2&#9733;</span> <span class="lang">x86-64 compiler, Rust</span></span>
+      <span class="repo-tag">vole-sim <span class="stars">2&#9733;</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">C++</span><span class="lang-pill">C</span><span class="lang-pill">Rust</span><span class="lang-pill">Go</span>
+    </div>
+    <div class="dev-why">GPU compute photo editor, x86-64 compiler, ISA simulator &mdash; all as a Cairo University student. 43 followers for compilers and GPU pipelines. Very undervalued.</div>
+  </div>
+
+  <!-- TIER 2 -->
+  <div class="tier tier-2"><h2>Tier 2 &mdash; Strong Signal</h2></div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/kewbish" target="_blank">@kewbish</a>
+      <span class="dev-name">Emilie Ma</span>
+      <span class="dev-affiliation">UBC CS '26 &middot; prev OpenAI, Stripe</span>
+    </div>
+    <div class="dev-stats"><b>157</b> followers &middot; <b>82</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">kintsugi <span class="stars">35&#9733;</span> <span class="lang">Rust</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-org">ubcctf</span></div>
+    <div class="dev-why">OpenAI+Stripe pedigree, building crypto protocols in Rust, CTF competitor. Under-the-radar for that resume.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/siraben" target="_blank">@siraben</a>
+      <span class="dev-name">Ben Siraphob</span>
+    </div>
+    <div class="dev-stats"><b>286</b> followers &middot; <b>712</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">zkeme80 <span class="stars">249&#9733;</span> <span class="lang">TI-84+ OS</span></span>
+      <span class="repo-tag">ti84-forth <span class="stars">100&#9733;</span> <span class="lang">Assembly</span></span>
+      <span class="repo-tag">mini-haskell <span class="stars">78&#9733;</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-org">NixOS</span><span class="signal signal-mutual">mutual: slightknack, Uzay-G</span></div>
+    <div class="dev-why">Compilers, operating systems on constrained hardware, self-hosting Haskell. Deep PL/systems.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/mkhan45" target="_blank">@mkhan45</a>
+      <span class="dev-name">Mikail Khan</span>
+      <span class="dev-affiliation">CMU PhD, Purdue '24</span>
+    </div>
+    <div class="dev-stats"><b>129</b> followers &middot; <b>727</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">CalcuLaTeX <span class="stars">406&#9733;</span></span>
+      <span class="repo-tag">tinyvm <span class="stars">107&#9733;</span></span>
+      <span class="repo-tag">RustScript2 <span class="lang">OCaml</span></span>
+    </div>
+    <div class="dev-why">Beautiful educational tool builder. CalcuLaTeX shows exceptional taste. CMU S3D PhD student.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/cronokirby" target="_blank">@cronokirby</a>
+      <span class="dev-name">L&uacute;c&aacute;s Meier</span>
+      <span class="dev-location">Seattle</span>
+    </div>
+    <div class="dev-stats"><b>431</b> followers &middot; <b>754</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">cait-sith <span class="stars">84&#9733;</span> <span class="lang">threshold ECDSA</span></span>
+      <span class="repo-tag">saferith <span class="stars">106&#9733;</span></span>
+      <span class="repo-tag">haskell-in-haskell <span class="stars">125&#9733;</span></span>
+      <span class="repo-tag">haze <span class="stars">108&#9733;</span> <span class="lang">BitTorrent</span></span>
+    </div>
+    <div class="dev-langs">
+      <span class="lang-pill">Rust</span><span class="lang-pill">Haskell</span><span class="lang-pill">Elixir</span><span class="lang-pill">Go</span>
+    </div>
+    <div class="dev-why">Real cryptography (threshold ECDSA!), self-hosting compilers, protocol implementations.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/TheOneKevin" target="_blank">@TheOneKevin</a>
+      <span class="dev-name">Kevin Dai</span>
+      <span class="dev-affiliation">Cerebras &middot; prev SoC design</span>
+    </div>
+    <div class="dev-stats"><b>73</b> followers &middot; <b>49</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">cxkernel <span class="stars">29&#9733;</span> <span class="lang">C++ OS</span></span>
+      <span class="repo-tag">LiquiDOS-Cosmos <span class="stars">3&#9733;</span></span>
+    </div>
+    <div class="dev-why">Multiple hobby OSes, SoC design background, now at Cerebras. The OS &rarr; chip &rarr; ML-hardware pipeline.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/purefunctor" target="_blank">@purefunctor</a>
+      <span class="dev-name">Justin Garcia</span>
+      <span class="dev-location">Manila, Philippines</span>
+    </div>
+    <div class="dev-stats"><b>168</b> followers &middot; <b>209</b> stars &middot; 1,078 commits &middot; 49 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">purescript-analyzer <span class="stars">80&#9733;</span> <span class="lang">Rust</span></span>
+      <span class="repo-tag">purescript-ouroboros <span class="stars">20&#9733;</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-org">purescript (core)</span></div>
+    <div class="dev-why">Compiler frontends in Rust, self-hosting compilers. PureScript core contributor from Philippines &mdash; high alpha geography.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/rishiosaur" target="_blank">@rishiosaur</a>
+      <span class="dev-name">Rishi Kothari</span>
+      <span class="dev-affiliation">arterial-labs</span>
+    </div>
+    <div class="dev-stats"><b>323</b> followers &middot; <b>241</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">idyllic <span class="stars">55&#9733;</span></span>
+      <span class="repo-tag">sepia <span class="stars">46&#9733;</span> <span class="lang">Rust</span></span>
+      <span class="repo-tag">ll <span class="stars">41&#9733;</span> <span class="lang">DNS magic</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">mutual of 3 seeds</span><span class="signal signal-org">hackclub</span></div>
+    <div class="dev-why">Building programming languages. Three-mutual-follow signal is very strong social proof.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/rajansagarwal" target="_blank">@rajansagarwal</a>
+      <span class="dev-name">Rajan Agarwal</span>
+      <span class="dev-location">SF</span>
+    </div>
+    <div class="dev-stats"><b>231</b> followers &middot; <b>124</b> stars</div>
+    <div class="dev-repos">
+      <span class="repo-tag">compression <span class="stars">41&#9733;</span> <span class="lang">LLM RL</span></span>
+      <span class="repo-tag">observe <span class="stars">21&#9733;</span></span>
+    </div>
+    <div class="dev-signals"><span class="signal signal-mutual">connected to 7 seeds</span></div>
+    <div class="dev-why">LLM context compression via RL is a legitimate research contribution. Connected to 7 seeds &mdash; one of the most well-connected young devs in the graph.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/ImShyMike" target="_blank">@ImShyMike</a>
+      <span class="dev-name">ShyMike</span>
+    </div>
+    <div class="dev-stats"><b>43</b> followers &middot; <b>117</b> stars &middot; <b>1,532</b> commits &middot; 69 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">rustytime <span class="stars">26&#9733;</span> <span class="lang">Rust</span></span>
+      <span class="repo-tag">waka-relay <span class="stars">32&#9733;</span></span>
+      <span class="repo-tag">Eryx <span class="lang">PL</span></span>
+    </div>
+    <div class="dev-why">1,532 commits at 43 followers. Dev tools in Rust, creating languages. Very high output, very low visibility. Classic no-marketing builder.</div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-header">
+      <a class="dev-login" href="https://github.com/knightron0" target="_blank">@knightron0</a>
+      <span class="dev-name">sarthak</span>
+      <span class="dev-affiliation">Purdue &middot; @tensara</span>
+    </div>
+    <div class="dev-stats"><b>112</b> followers &middot; <b>109</b> stars &middot; 325 commits &middot; 88 PRs</div>
+    <div class="dev-repos">
+      <span class="repo-tag">tempus <span class="stars">64&#9733;</span></span>
+      <span class="repo-tag">tvm-gnn-costmodel <span class="lang">ML-for-compilers</span></span>
+    </div>
+    <div class="dev-why">TVM compiler cost modeling with graph neural networks. ML-for-compilers research, which is cutting-edge. 88 PRs shows heavy OSS collaboration.</div>
+  </div>
+
+  <!-- TIER 3 -->
+  <div class="tier tier-3"><h2>Tier 3 &mdash; Worth Watching</h2></div>
+
+  <div class="compact-list">
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/achou11" target="_blank">@achou11</a> <span class="dev-name">Andrew Chou</span> &mdash; NYC, @digidem. <code>no-virtual-dom</code> (124&#9733;), <code>state-machines</code> (63&#9733;). Zig user. Mutual of 3 seeds.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/Jemoka" target="_blank">@Jemoka</a> <span class="dev-name">Houjun Liu</span> &mdash; Stanford, stanfordnlp/sisl/stanford-ssi. NLP + POMDPs. 940 commits.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/iamnbutler" target="_blank">@iamnbutler</a> <span class="dev-name">Nate Butler</span> &mdash; GitHub Next. <code>luna</code> (121&#9733;), <code>gpuikit</code> (113&#9733;, Zed UI toolkit).
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/rain-1" target="_blank">@rain-1</a> &mdash; <code>awesome-allocators</code> (184&#9733;), Scheme interpreter (82&#9733;). Deep PL/systems.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/Aiden01" target="_blank">@Aiden01</a> &mdash; Canada. <code>iris-lang</code> (16&#9733;, Haskell), <code>opal</code> (9&#9733;). Building typed languages with no bio.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/phreda4" target="_blank">@phreda4</a> <span class="dev-name">PH Reda</span> &mdash; Argentina. <code>r3</code> (192&#9733;), <code>r4</code> (141&#9733;) &mdash; Forth-inspired concatenative languages.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/oriansj" target="_blank">@oriansj</a> <span class="dev-name">Jeremiah</span> &mdash; <code>stage0</code> (1,027&#9733;) &mdash; bootstrapping computing from minimal dependencies.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/ch1n3du" target="_blank">@ch1n3du</a> &mdash; "cypherpunk wannabe". <code>pico-redis</code> (Rust), <code>tsuki</code> (compiler). 63 followers.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/celsobonutti" target="_blank">@celsobonutti</a> &mdash; Salvador, Brazil. @NoRedInk. Milho language in Haskell+Rust. Agda user.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/AddisonPrairie" target="_blank">@AddisonPrairie</a> &mdash; GPU path tracers, voxel renderers, BVH acceleration. <b>12 followers</b>.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/eigenlucy" target="_blank">@eigenlucy</a> <span class="dev-name">Lucy Moglia</span> &mdash; SF. MPPT chargers, high-altitude balloon trackers, ML on sensor arrays. Hardware+ML bridge.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/claynicholson" target="_blank">@claynicholson</a> <span class="dev-name">Clay Nicholson</span> &mdash; <b>MIT '30</b>, gap year at Hack Club. Robot arms, custom PCBs, Prolog. 25 followers.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/ConstantineB6" target="_blank">@ConstantineB6</a> <span class="dev-name">Constantine</span> &mdash; SF, Whop Labs. <code>comfy-pilot</code> (104&#9733;, MCP for Claude Code). <code>garbage-compiler</code> in Zig.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/deepfates" target="_blank">@deepfates</a> &mdash; <code>memery</code> (568&#9733;) &mdash; search images with natural language. <code>hnsw</code> in browser.
+    </div>
+    <div class="compact-item">
+      <a class="dev-login" href="https://github.com/laurgao" target="_blank">@laurgao</a> <span class="dev-name">Laura Gao</span> &mdash; Penn M&amp;T. Symbolic algebra from scratch, quantum computing (QAOA). Mutual of 2 seeds.
+    </div>
+  </div>
+
+  <div class="footer">
+    Generated 2026-02-27 &middot; 3,263 profiles across 26 seed networks &middot;
+    <a href="/" style="color:var(--green);text-decoration:none">query the data &rarr;</a>
+  </div>
+</div>
+
+</body>
+</html>

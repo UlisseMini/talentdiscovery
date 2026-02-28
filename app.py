@@ -36,6 +36,8 @@ image = (
         "mkdir -p /home/agent/.claude && chown -R agent:agent /home/agent",
     )
     .add_local_file("index.html", remote_path="/app/index.html")
+    .add_local_file("viz.html", remote_path="/app/viz.html")
+    .add_local_file("promising.html", remote_path="/app/promising.html")
 )
 
 volume = modal.Volume.from_name("talent-data")
@@ -158,6 +160,7 @@ AGENT_SYSTEM_PROMPT = """You are a talent discovery agent for a recruiting platf
 ## Data Location
 - Developer profiles: /data/data/merged_network.json (JSON with "profiles" array, "seeds" array)
 - Hackathon projects: /data/enriched_winners.json (JSON array of projects)
+- Network graph: /data/data/graph.json (nodes with pagerank, betweenness, community, diamond_score; links with mutual flag)
 
 ## Quick Data Access
 You can use Python to query the data. Here's a starter pattern:
@@ -170,8 +173,8 @@ profiles = data['profiles']
 # Search by keyword
 results = [p for p in profiles if 'rust' in ' '.join(p.get('top_languages', [])).lower()]
 
-# Sort by cracked_score (our proprietary "undiscovered talent" metric)
-results.sort(key=lambda p: -p.get('cracked_score', 0))
+# Sort by total_stars or any metric
+results.sort(key=lambda p: -p.get('total_stars', 0))
 
 # Key fields per profile:
 # login, name, bio, company, location, followers, following
@@ -182,17 +185,30 @@ results.sort(key=lambda p: -p.get('cracked_score', 0))
 # found_via: [seed_logins], connections: {seed: [relationship_types]}
 ```
 
-## Cracked Score
-Our proprietary score that favors undiscovered talent:
-- Log-scaled stars per year (prevents mega-repos from dominating)
-- Youth multiplier (younger accounts with high output = more impressive)
-- Famous penalty (>5K followers = already discovered)
-- Follow-farm penalty (high followers, low output = suspicious)
-- Network bonus (found via multiple seed networks = strong signal)
+## GitHub API Access
+You have a GITHUB_TOKEN env var (5000 req/hr). Use Python to fetch live data:
+
+```python
+import httpx, os
+headers = {"Authorization": f"bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"}
+
+# Useful endpoints:
+r = httpx.get("https://api.github.com/users/{login}", headers=headers)              # profile, bio, follower counts
+r = httpx.get("https://api.github.com/users/{login}/repos?sort=stars&per_page=10", headers=headers)  # top repos
+r = httpx.get("https://api.github.com/users/{login}/events/public?per_page=30", headers=headers)     # recent activity
+r = httpx.get("https://api.github.com/repos/{owner}/{repo}", headers=headers)        # repo details, stars, forks
+r = httpx.get("https://api.github.com/repos/{owner}/{repo}/contributors", headers=headers)  # contributors
+r = httpx.get("https://api.github.com/repos/{owner}/{repo}/commits?per_page=5", headers=headers)     # recent commits
+r = httpx.get("https://api.github.com/search/repositories?q=language:rust+stars:>100", headers=headers)  # search repos
+r = httpx.get("https://api.github.com/search/users?q=location:SF+followers:>50", headers=headers)    # search users
+data = r.json()
+```
+
+Use these to go beyond our dataset — fetch recent activity, verify profiles, discover new repos, check commit recency.
 
 ## Your Job
 1. Use Bash to run Python snippets that query the data
-2. Use WebSearch/WebFetch for live GitHub research
+2. Use WebSearch/WebFetch for live GitHub research, and the GitHub API via GITHUB_TOKEN for detailed data
 3. Provide data-driven recommendations with specific numbers
 4. Be concise but thorough - cite login, stars, commits, languages, notable repos
 5. Highlight network signals: MULTI-NET, MUTUAL flags
@@ -223,6 +239,30 @@ async def serve_frontend():
     if local_html.exists():
         return FileResponse(local_html, media_type="text/html")
     return HTMLResponse("<h1>index.html not found</h1>", status_code=500)
+
+
+@web_app.get("/promising")
+async def serve_promising():
+    html = Path("/app/promising.html")
+    if html.exists():
+        return FileResponse(html, media_type="text/html")
+    return HTMLResponse("<h1>promising.html not found</h1>", status_code=500)
+
+
+@web_app.get("/viz")
+async def serve_viz():
+    viz_html = Path("/app/viz.html")
+    if viz_html.exists():
+        return FileResponse(viz_html, media_type="text/html")
+    return HTMLResponse("<h1>viz.html not found</h1>", status_code=500)
+
+
+@web_app.get("/data/graph.json")
+async def serve_graph_json():
+    graph_file = Path(f"{VOLUME_PATH}/data/graph.json")
+    if graph_file.exists():
+        return FileResponse(graph_file, media_type="application/json")
+    return JSONResponse({"error": "graph.json not found"}, status_code=404)
 
 
 @web_app.get("/api/stats")
@@ -439,6 +479,7 @@ async def chat(request: Request, q: str = Query(...), session_id: str | None = Q
 
     async def event_stream():
         start = time.time()
+        yield {"event": "status", "data": json.dumps({"text": "Starting sandbox..."})}
         try:
             from claude_agent_sdk import (
                 ClaudeAgentOptions, query as agent_query,
@@ -446,8 +487,10 @@ async def chat(request: Request, q: str = Query(...), session_id: str | None = Q
             )
 
             agent_env = {}
-            if github_token:
-                agent_env["GITHUB_TOKEN"] = github_token
+            # Use user's token if authenticated, otherwise fall back to platform token
+            gh_token = github_token or os.environ.get("GITHUB_TOKEN", "")
+            if gh_token:
+                agent_env["GITHUB_TOKEN"] = gh_token
 
             stderr_lines = []
             def capture_stderr(line: str):
@@ -470,6 +513,7 @@ async def chat(request: Request, q: str = Query(...), session_id: str | None = Q
                 **({"resume": session_id} if session_id else {}),
             )
 
+            yield {"event": "status", "data": json.dumps({"text": "Thinking..."})}
             async for msg in agent_query(prompt=q, options=options):
                 if await request.is_disconnected():
                     break
@@ -564,7 +608,9 @@ Cite numbers. Be honest about gaps. Use WebSearch to look up their recent GitHub
                 cwd="/data",
                 include_partial_messages=True,
                 user="agent",
-                env={"HOME": "/home/agent"},
+                env={"HOME": "/home/agent", **({
+                    "GITHUB_TOKEN": os.environ["GITHUB_TOKEN"]
+                } if os.environ.get("GITHUB_TOKEN") else {})},
             )
 
             async for msg in agent_query(prompt=prompt, options=options):
@@ -600,8 +646,10 @@ Cite numbers. Be honest about gaps. Use WebSearch to look up their recent GitHub
 @app.function(
     image=image,
     volumes={VOLUME_PATH: volume},
-    secrets=[modal.Secret.from_name("anthropic-key")],
+    secrets=[modal.Secret.from_name("anthropic-key"), modal.Secret.from_name("github-token")],
     timeout=600,
+    min_containers=1,
+    scaledown_window=1200,
 )
 @modal.asgi_app()
 def web():

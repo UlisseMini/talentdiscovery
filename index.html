@@ -639,6 +639,65 @@ body::before {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* ===== Graph Overlay ===== */
+.graph-toggle {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.graph-toggle:hover {
+  border-color: var(--border-active);
+  color: var(--text-secondary);
+}
+.graph-toggle.active {
+  border-color: var(--green-dim);
+  color: var(--green);
+  background: var(--green-glow);
+}
+
+.graph-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: none;
+}
+.graph-overlay.visible {
+  display: block;
+}
+.graph-overlay iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.graph-close {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 51;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.graph-close:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .welcome-grid { grid-template-columns: 1fr; }
@@ -659,6 +718,8 @@ body::before {
     </div>
     <div class="topbar-right">
       <span class="topbar-stat" id="topbar-stats"></span>
+      <a class="graph-toggle" href="/promising" style="text-decoration:none">picks</a>
+      <button class="graph-toggle" id="graph-toggle" onclick="toggleGraph()">graph</button>
       <div id="auth-area">
         <a class="auth-btn" href="/auth/github">sign in</a>
       </div>
@@ -712,6 +773,11 @@ body::before {
       <span id="session-indicator"></span>
     </div>
   </div>
+</div>
+
+<!-- Graph overlay -->
+<div class="graph-overlay" id="graph-overlay">
+  <button class="graph-close" onclick="toggleGraph()">close graph</button>
 </div>
 
 <script>
@@ -846,6 +912,11 @@ function send(q) {
   if (eventSource) eventSource.close();
   eventSource = new EventSource(url);
 
+  eventSource.addEventListener('status', e => {
+    const data = JSON.parse(e.data);
+    statusEl.textContent = data.text;
+  });
+
   eventSource.addEventListener('text', e => {
     const data = JSON.parse(e.data);
     fullText = data.text;
@@ -857,6 +928,9 @@ function send(q) {
   eventSource.addEventListener('tool_call', e => {
     const data = JSON.parse(e.data);
     toolCalls.push(data);
+    // Hide spinner on previous tool (it's done if a new one is starting)
+    const prevSpinner = toolsContainer.querySelector('.tool-call:last-child .tool-spinner');
+    if (prevSpinner) prevSpinner.style.display = 'none';
     const tc = createToolCall(data, true);
     toolsContainer.appendChild(tc);
     statusEl.textContent = `running ${data.tool}...`;
@@ -881,6 +955,7 @@ function send(q) {
 
     // Final render
     typingEl.remove();
+    toolsContainer.querySelectorAll('.tool-spinner').forEach(s => s.style.display = 'none');
     bubbleEl.innerHTML = marked.parse(fullText);
 
     // Add meta line
@@ -975,6 +1050,21 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+// ===== Graph toggle =====
+let graphLoaded = false;
+function toggleGraph() {
+  const overlay = document.getElementById('graph-overlay');
+  const btn = document.getElementById('graph-toggle');
+  const isVisible = overlay.classList.toggle('visible');
+  btn.classList.toggle('active', isVisible);
+  if (isVisible && !graphLoaded) {
+    const iframe = document.createElement('iframe');
+    iframe.src = '/viz';
+    overlay.appendChild(iframe);
+    graphLoaded = true;
+  }
 }
 
 // ===== Start =====

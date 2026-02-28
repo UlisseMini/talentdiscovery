@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Network Explorer</title>
+<title>TALENT_DISCOVERY // Network Graph</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
   :root {
-    --bg: #0a0e14;
+    --bg: #06080a;
     --surface: #12171f;
     --surface2: #1a2030;
     --border: rgba(255,255,255,0.06);
@@ -32,7 +32,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: var(--bg); color: var(--text);
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'IBM Plex Mono', 'SF Mono', monospace;
     overflow: hidden; height: 100vh;
   }
 
@@ -410,7 +410,7 @@
 <div id="loading"><div class="loader"></div><p>Loading network...</p></div>
 
 <div id="topbar">
-  <h1>Network Explorer</h1>
+  <h1 style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;background:none;-webkit-text-fill-color:inherit;color:#22c55e">NETWORK GRAPH</h1>
   <div class="search-wrap">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
     <input id="search" type="text" placeholder="Search name, user, or language..." autocomplete="off">
@@ -879,7 +879,7 @@ fetch('data/graph.json')
     // ---- Build graph ----
     Graph = ForceGraph()(document.getElementById('graph-container'))
       .graphData(data)
-      .backgroundColor('#0a0e14')
+      .backgroundColor('#06080a')
       .nodeColor(getNodeColor)
       .nodeVal(getNodeSize)
       .nodeLabel(() => '')
@@ -930,7 +930,7 @@ fetch('data/graph.json')
           if (showLabel) {
             const label = node.id;
             const fontSize = Math.max(10 / globalScale, 1.5);
-            ctx.font = `${fontSize}px Inter, sans-serif`;
+            ctx.font = `${fontSize}px 'IBM Plex Mono', monospace`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             const yOff = r + 2;
