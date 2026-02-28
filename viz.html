@@ -448,7 +448,7 @@
     </div>
   </div>
   <div class="filter-section">
-    <div class="filter-title">Min Diamond Score</div>
+    <div class="filter-title">Min Cracked Score</div>
     <div class="range-input">
       <input type="range" id="min-diamond" min="0" max="200" value="0" step="5">
       <span class="range-value" id="min-diamond-val">0</span>
@@ -782,7 +782,7 @@ function openPanel(node) {
     { v: ((node.pagerank || 0) * 1000).toFixed(2), l: 'PageRank (x1000)' },
     { v: ((node.betweenness || 0) * 100).toFixed(2) + '%', l: 'Betweenness' },
     { v: node.community ?? '-', l: 'Community' },
-    { v: node.diamond_score || 0, l: 'Diamond Score' },
+    { v: node.diamond_score || 0, l: 'Cracked Score' },
   ].map(m => `<div class="metric"><div class="metric-value">${m.v}</div><div class="metric-label">${m.l}</div></div>`).join('');
 
   // languages

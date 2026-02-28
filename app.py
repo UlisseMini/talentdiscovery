@@ -3,9 +3,11 @@ Modal app: GitHub Intelligence Platform
 FastAPI web service + Claude Agent SDK chat
 """
 
+import glob
 import json
 import math
 import os
+import random
 import time
 import uuid
 from collections import defaultdict
@@ -38,9 +40,11 @@ image = (
     .add_local_file("index.html", remote_path="/app/index.html")
     .add_local_file("viz.html", remote_path="/app/viz.html")
     .add_local_file("promising.html", remote_path="/app/promising.html")
+    .add_local_file("sessions.html", remote_path="/app/sessions.html")
 )
 
 volume = modal.Volume.from_name("talent-data")
+crawl_state = modal.Dict.from_name("crawl-state", create_if_missing=True)
 
 VOLUME_PATH = "/data"
 MERGED_FILE = f"{VOLUME_PATH}/data/merged_network.json"
@@ -61,52 +65,289 @@ SEARCH_STRINGS: dict[str, str] = {}
 HACKATHON_PROJECTS: list[dict] = []
 SEEDS: list[str] = []
 ALL_LANGUAGES: list[str] = []
+GRAPH_DATA: dict = {}
 _DATA_LOADED = False
+_LAST_RELOAD: float = 0.0
 
 
-def load_data():
-    global PROFILES, SEEDS, HACKATHON_PROJECTS, ALL_LANGUAGES, _DATA_LOADED
-    if _DATA_LOADED:
-        return
+# ---------------------------------------------------------------------------
+# Pure-Python graph algorithms (no networkx dependency)
+# ---------------------------------------------------------------------------
 
-    PROFILES.clear()
-    PROFILES_BY_LOGIN.clear()
-    PROFILES_BY_LANGUAGE.clear()
-    SEARCH_STRINGS.clear()
-    HACKATHON_PROJECTS.clear()
-    SEEDS.clear()
-    ALL_LANGUAGES.clear()
+def _compute_pagerank(adj: dict[str, set[str]], nodes: list[str], iterations: int = 20, damping: float = 0.85) -> dict[str, float]:
+    """Power-iteration PageRank on an undirected graph."""
+    n = len(nodes)
+    if n == 0:
+        return {}
+    rank = {v: 1.0 / n for v in nodes}
+    for _ in range(iterations):
+        new_rank = {}
+        for v in nodes:
+            s = sum(rank[u] / len(adj[u]) for u in adj[v] if adj[u])
+            new_rank[v] = (1 - damping) / n + damping * s
+        rank = new_rank
+    return rank
 
+
+def _compute_betweenness(adj: dict[str, set[str]], nodes: list[str]) -> dict[str, float]:
+    """Brandes algorithm for betweenness centrality on an undirected graph."""
+    cb = {v: 0.0 for v in nodes}
+    for s in nodes:
+        # BFS
+        stack = []
+        pred: dict[str, list[str]] = {v: [] for v in nodes}
+        sigma = {v: 0.0 for v in nodes}
+        sigma[s] = 1.0
+        dist = {v: -1 for v in nodes}
+        dist[s] = 0
+        queue = [s]
+        qi = 0
+        while qi < len(queue):
+            v = queue[qi]
+            qi += 1
+            stack.append(v)
+            for w in adj[v]:
+                if dist[w] < 0:
+                    dist[w] = dist[v] + 1
+                    queue.append(w)
+                if dist[w] == dist[v] + 1:
+                    sigma[w] += sigma[v]
+                    pred[w].append(v)
+        delta = {v: 0.0 for v in nodes}
+        while stack:
+            w = stack.pop()
+            for v in pred[w]:
+                delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w])
+            if w != s:
+                cb[w] += delta[w]
+    # Normalize for undirected graph
+    n = len(nodes)
+    if n > 2:
+        norm = 1.0 / ((n - 1) * (n - 2))
+        for v in nodes:
+            cb[v] *= norm
+    return cb
+
+
+def _compute_communities(adj: dict[str, set[str]], nodes: list[str], iterations: int = 10) -> dict[str, int]:
+    """Label propagation community detection."""
+    label = {v: i for i, v in enumerate(nodes)}
+    node_list = list(nodes)
+    for _ in range(iterations):
+        random.shuffle(node_list)
+        changed = False
+        for v in node_list:
+            if not adj[v]:
+                continue
+            counts: dict[int, int] = defaultdict(int)
+            for u in adj[v]:
+                counts[label[u]] += 1
+            max_count = max(counts.values())
+            best = [lbl for lbl, cnt in counts.items() if cnt == max_count]
+            new_label = min(best)  # deterministic tie-breaking
+            if new_label != label[v]:
+                label[v] = new_label
+                changed = True
+        if not changed:
+            break
+    # Renumber communities to 0..k-1
+    unique = sorted(set(label.values()))
+    remap = {old: i for i, old in enumerate(unique)}
+    return {v: remap[label[v]] for v in nodes}
+
+
+def _build_graph(profiles_by_login: dict, seeds: list[str], promising_devs: list[dict]) -> dict:
+    """Build graph data at runtime. Returns {"nodes": [...], "links": [...]}."""
+    MAX_NODES = 400
+
+    # Build promising lookups
+    promising_tier = {p["login"]: p["tier"] for p in promising_devs}
+    promising_reason = {p["login"]: p.get("reason", "") for p in promising_devs}
+
+    # Determine all seeds (from network files too)
+    all_seeds = set(seeds)
+    for fpath in glob.glob(f"{VOLUME_PATH}/data/network_*.json"):
+        name = os.path.basename(fpath).replace("network_", "").replace(".json", "")
+        all_seeds.add(name)
+
+    # ---- Select nodes ----
+    # Priority: seeds > promising > 3+ connections > top cracked_score
+    must_include = set(all_seeds)
+    for p in promising_devs:
+        must_include.add(p["login"])
+
+    candidates_3conn = []
+    for login, p in profiles_by_login.items():
+        if login not in must_include and len(p.get("connections", {})) >= 3:
+            candidates_3conn.append((login, p.get("cracked_score", 0)))
+    candidates_3conn.sort(key=lambda x: -x[1])
+
+    selected = set(must_include)
+    for login, _ in candidates_3conn:
+        if len(selected) >= MAX_NODES:
+            break
+        selected.add(login)
+    # Fill remaining with top cracked_score
+    by_cracked = sorted(profiles_by_login.values(), key=lambda p: -p.get("cracked_score", 0))
+    for p in by_cracked:
+        if len(selected) >= MAX_NODES:
+            break
+        selected.add(p["login"])
+
+    # ---- Build directed edges ----
+    directed_edges: set[tuple[str, str]] = set()
+
+    # From network_*.json files
+    for fpath in glob.glob(f"{VOLUME_PATH}/data/network_*.json"):
+        try:
+            net = json.loads(Path(fpath).read_text())
+        except Exception:
+            continue
+        seed = net.get("seed", "")
+        if seed not in selected:
+            continue
+        for follower in net.get("followers", []):
+            if follower in selected:
+                directed_edges.add((follower, seed))
+        for following in net.get("following", []):
+            if following in selected:
+                directed_edges.add((seed, following))
+
+    # From merged connections
+    for login in selected:
+        p = profiles_by_login.get(login, {})
+        for seed_login, rels in p.get("connections", {}).items():
+            if seed_login not in selected:
+                continue
+            for rel in rels:
+                if rel == "follower":
+                    directed_edges.add((login, seed_login))
+                elif rel == "following":
+                    directed_edges.add((seed_login, login))
+
+    # Collapse to undirected with mutual flag
+    undirected: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for a, b in directed_edges:
+        key = (min(a, b), max(a, b))
+        if key not in undirected:
+            undirected[key] = set()
+        undirected[key].add((a, b))
+
+    edges_out = []
+    for (a, b), directions in undirected.items():
+        mutual = len(directions) >= 2
+        edges_out.append({"source": a, "target": b, "mutual": mutual})
+
+    # ---- Build adjacency for algorithms ----
+    node_list = sorted(selected)
+    adj: dict[str, set[str]] = {v: set() for v in node_list}
+    for e in edges_out:
+        adj[e["source"]].add(e["target"])
+        adj[e["target"]].add(e["source"])
+
+    # ---- Compute metrics ----
+    pagerank = _compute_pagerank(adj, node_list)
+    betweenness = _compute_betweenness(adj, node_list)
+    communities = _compute_communities(adj, node_list)
+    degree = {v: len(adj[v]) for v in node_list}
+
+    # ---- Assign tiers ----
+    def get_tier(login):
+        if login in all_seeds:
+            return "seed"
+        if login in promising_tier:
+            return f"tier{promising_tier[login]}"
+        p = profiles_by_login.get(login, {})
+        cs = p.get("cracked_score", 0)
+        if cs >= 60:
+            return "tier1"
+        elif cs >= 40:
+            return "tier2"
+        elif cs >= 25:
+            return "tier3"
+        return "other"
+
+    # ---- Build output nodes ----
+    nodes = []
+    for login in node_list:
+        p = profiles_by_login.get(login, {})
+        top_repos = []
+        for r in (p.get("top_repos") or [])[:5]:
+            top_repos.append({
+                "name": r["name"],
+                "stars": r.get("stars", 0),
+                "lang": r.get("lang"),
+                "desc": (r.get("desc") or "")[:120],
+            })
+        top_lang = p.get("top_languages", [None])[0] if p.get("top_languages") else None
+        languages = p.get("top_languages", [])[:5]
+
+        nodes.append({
+            "id": login,
+            "name": p.get("name") or login,
+            "bio": (p.get("bio") or "")[:300],
+            "tier": get_tier(login),
+            "followers": p.get("followers", 0),
+            "following": p.get("following", 0),
+            "total_stars": p.get("total_stars", 0),
+            "total_commits": p.get("total_commits", 0),
+            "total_prs": p.get("total_prs", 0),
+            "public_repos": p.get("public_repos", 0),
+            "top_lang": top_lang,
+            "languages": languages,
+            "top_repos": top_repos,
+            "score": round(p.get("score", 0), 1),
+            "diamond_score": round(p.get("cracked_score", 0), 1),
+            "reason": promising_reason.get(login, ""),
+            "location": p.get("location") or "",
+            "company": p.get("company") or "",
+            "website": p.get("website") or "",
+            "twitter": p.get("twitter") or "",
+            "created_at": p.get("created_at") or "",
+            "connected_seeds": list(p.get("connections", {}).keys()) if p.get("connections") else [],
+            "pagerank": round(pagerank.get(login, 0), 6),
+            "betweenness": round(betweenness.get(login, 0), 6),
+            "community": communities.get(login, 0),
+            "degree": degree.get(login, 0),
+        })
+
+    return {"nodes": nodes, "links": edges_out}
+
+
+def _build_data():
+    """Read data files and build all indexes. Returns a dict of all computed state."""
     raw = json.loads(Path(MERGED_FILE).read_text())
-    SEEDS.extend(raw.get("seeds", []))
-    PROFILES.extend(raw["profiles"])
+    seeds = raw.get("seeds", [])
+    profiles = list(raw["profiles"])
 
+    profiles_by_login = {}
+    profiles_by_language: dict[str, list[dict]] = defaultdict(list)
+    search_strings = {}
     lang_counts: dict[str, int] = defaultdict(int)
 
-    for p in PROFILES:
+    for p in profiles:
         login = p["login"]
-        PROFILES_BY_LOGIN[login] = p
+        profiles_by_login[login] = p
         for lang in p.get("top_languages", []):
-            PROFILES_BY_LANGUAGE[lang].append(p)
+            profiles_by_language[lang].append(p)
             lang_counts[lang] += 1
         parts = [
             login, p.get("name") or "", p.get("bio") or "",
             p.get("company") or "", p.get("location") or "",
             " ".join(p.get("top_languages", [])),
-            " ".join(o.get("login", "") for o in p.get("orgs", [])),
+            " ".join((o if isinstance(o, str) else o.get("login", "")) for o in p.get("orgs", [])),
             " ".join(r.get("name", "") + " " + (r.get("desc") or "") for r in p.get("top_repos", [])),
         ]
-        SEARCH_STRINGS[login] = " ".join(parts).lower()
+        search_strings[login] = " ".join(parts).lower()
 
-    ALL_LANGUAGES.extend(
-        lang for lang, _ in sorted(lang_counts.items(), key=lambda x: -x[1])
-    )
+    all_languages = [lang for lang, _ in sorted(lang_counts.items(), key=lambda x: -x[1])]
 
+    hackathon_projects = []
     if Path(ENRICHED_FILE).exists():
-        HACKATHON_PROJECTS.extend(json.loads(Path(ENRICHED_FILE).read_text()))
+        hackathon_projects = json.loads(Path(ENRICHED_FILE).read_text())
 
     # Compute cracked_score
-    for p in PROFILES:
+    for p in profiles:
         created = p.get("created_at", "")
         if created:
             try:
@@ -146,8 +387,81 @@ def load_data():
         p["cracked_score"] = round(cracked, 1)
         p["account_age_years"] = round(age, 1)
 
-    PROFILES.sort(key=lambda p: -p.get("cracked_score", 0))
+    profiles.sort(key=lambda p: -p.get("cracked_score", 0))
+
+    # Load promising devs for graph building
+    promising_devs = []
+    promising_path = Path(f"{VOLUME_PATH}/data/promising_devs.json")
+    if promising_path.exists():
+        try:
+            promising_devs = json.loads(promising_path.read_text())
+        except Exception as e:
+            print(f"Failed to load promising_devs.json: {e}")
+
+    # Build runtime graph
+    graph_data = {}
+    try:
+        graph_data = _build_graph(profiles_by_login, seeds, promising_devs)
+        print(f"Built graph: {len(graph_data.get('nodes', []))} nodes, {len(graph_data.get('links', []))} links")
+    except Exception as e:
+        print(f"Failed to build graph: {e}")
+        import traceback; traceback.print_exc()
+
+    return {
+        "profiles": profiles,
+        "profiles_by_login": profiles_by_login,
+        "profiles_by_language": dict(profiles_by_language),
+        "search_strings": search_strings,
+        "hackathon_projects": hackathon_projects,
+        "seeds": seeds,
+        "all_languages": all_languages,
+        "graph_data": graph_data,
+    }
+
+
+def load_data():
+    global PROFILES, SEEDS, HACKATHON_PROJECTS, ALL_LANGUAGES, GRAPH_DATA, _DATA_LOADED, _LAST_RELOAD
+
+    # Periodically reload volume to pick up crawler changes
+    if _DATA_LOADED:
+        if time.time() - _LAST_RELOAD < 60:
+            return
+        try:
+            volume.reload()
+        except Exception as e:
+            print(f"volume.reload() failed: {e}")
+        _LAST_RELOAD = time.time()
+        # Fall through to re-read files
+
+    try:
+        data = _build_data()
+    except Exception as e:
+        print(f"load_data() failed to build data: {e}")
+        import traceback; traceback.print_exc()
+        if _DATA_LOADED:
+            return  # Keep serving stale data rather than crashing
+        raise
+
+    # Atomic swap: replace all module-level state at once
+    PROFILES.clear()
+    PROFILES.extend(data["profiles"])
+    PROFILES_BY_LOGIN.clear()
+    PROFILES_BY_LOGIN.update(data["profiles_by_login"])
+    PROFILES_BY_LANGUAGE.clear()
+    PROFILES_BY_LANGUAGE.update(data["profiles_by_language"])
+    SEARCH_STRINGS.clear()
+    SEARCH_STRINGS.update(data["search_strings"])
+    HACKATHON_PROJECTS.clear()
+    HACKATHON_PROJECTS.extend(data["hackathon_projects"])
+    SEEDS.clear()
+    SEEDS.extend(data["seeds"])
+    ALL_LANGUAGES.clear()
+    ALL_LANGUAGES.extend(data["all_languages"])
+    GRAPH_DATA.clear()
+    GRAPH_DATA.update(data.get("graph_data", {}))
+
     _DATA_LOADED = True
+    _LAST_RELOAD = time.time()
     print(f"Loaded {len(PROFILES)} profiles, {len(HACKATHON_PROJECTS)} hackathon projects, {len(ALL_LANGUAGES)} languages")
 
 
@@ -216,6 +530,128 @@ Use these to go beyond our dataset — fetch recent activity, verify profiles, d
 Always cite specific numbers from the data. Don't make up information."""
 
 
+CRAWLER_SYSTEM_PROMPT = """You are a talent discovery crawler running autonomously every 10 minutes.
+Your job: expand the GitHub talent network by exploring social graphs, profiling promising developers, and saving results.
+You're looking for "cracked devs" — extremely talented builders who aren't well-known yet.
+
+## Data Files (all under /data/)
+- /data/data/merged_network.json — THE MAIN FILE. JSON with "profiles" array and "seeds" array. Each profile has: login, name, bio, company, location, followers, following, public_repos, total_commits, total_prs, top_repos [{name, stars, lang, desc}], total_stars, top_languages, orgs, found_via, connections, in_multiple_networks, is_mutual_follow, score, created_at
+- /data/data/network_*.json — per-seed follower/following lists with profiles
+- /data/data/promising_devs.json — CURATED LIST of exceptional developers. You MUST read this and append to it when you find someone truly exceptional. See format below.
+- /data/crawl_log.json — YOUR crawl history. Read this first, update it when done!
+
+## Promising Devs Curation (IMPORTANT)
+You are responsible for maintaining /data/data/promising_devs.json. This is a JSON array of exceptional developers with these fields:
+- login: GitHub username
+- tier: 1 (absolute hidden gem) or 2 (strong under-radar talent)
+- reason: 1-3 sentence editorial explanation of WHY they're exceptional
+- Plus all standard profile fields (name, bio, followers, total_stars, top_repos, top_languages, etc.)
+
+### Tier 1 criteria (hidden gems — very selective, ~1 per run if any):
+- Absurdly low visibility (12-100 followers) relative to exceptional technical depth
+- Working in hard domains: CPU/hardware design, PL theory, real cryptography/ZK, kernel/OS dev, graphics engines, formal verification
+- The "wow" factor: "People who design CPUs for fun are exceptionally rare"
+- Near-zero self-promotion despite extraordinary work
+
+Example tier 1 reasons:
+- "18 followers. 6-stage pipelined RISC-V CPU on FPGA in SystemVerilog. People who design CPUs for fun are exceptionally rare."
+- "30 followers. GPU SHA-256 in CUDA, autodiff library in C, ZK-SNARKs. Systems+crypto+ML at extreme low visibility."
+- "75 followers. Lisp interpreter in sed. Lambda calculus compiler in C. Cubical type theory in OCaml. Extraordinary PL theory depth."
+- "12 followers. WebGPU path tracing, voxel fractals, BVH construction. Serious graphics engineering at near-zero visibility."
+
+### Tier 2 criteria (strong under-radar — maybe 2-3 per run):
+- Low visibility (<500 followers) with strong technical work
+- Top school/company credentials (CMU, Caltech, MIT, Stanford, OpenAI, Stripe) combined with real projects
+- Strong network signals (connected to multiple seeds, mutual follows)
+- Solid technical depth but not quite jaw-dropping
+
+Example tier 2 reasons:
+- "UBC '26. OpenAI + Stripe intern. E2EE key recovery protocol in Rust. CTF competitor. Under-radar for that resume."
+- "CMU PhD. CalcuLaTeX (406★), tinyvm, physics sims. Beautiful educational tools. Shows exceptional taste."
+- "88 followers. RISC-V→ARM binary translator in Rust. TockOS formal verification. @tock contributor."
+
+### Rules for promising_devs.json:
+- Read the existing list first. Never add duplicates.
+- Be VERY selective. Only add someone if you'd genuinely be impressed reviewing their GitHub.
+- The reason field is editorial — write it like a talent scout's note, not a data dump.
+- Include follower count in the reason to emphasize the visibility gap.
+- It's fine to add 0 people in a run. Don't lower the bar.
+
+## GitHub API
+GITHUB_TOKEN is set in env. Use Python with httpx.
+
+### GraphQL (POST https://api.github.com/graphql)
+```python
+import httpx, os, json
+headers = {"Authorization": f"bearer {os.environ['GITHUB_TOKEN']}", "Content-Type": "application/json"}
+client = httpx.Client(headers=headers, timeout=30)
+
+# Get someone's network (followers + following)
+query = '''{ user(login: "%s") {
+  followers(first: 100) { nodes { login } totalCount pageInfo { hasNextPage endCursor } }
+  following(first: 100) { nodes { login } totalCount pageInfo { hasNextPage endCursor } }
+} }''' % login
+resp = client.post("https://api.github.com/graphql", json={"query": query})
+
+# Profile a user in detail
+query = '''{ user(login: "%s") {
+  login name bio company location twitterUsername websiteUrl createdAt
+  followers { totalCount } following { totalCount }
+  repositories(first: 10, ownerAffiliations: OWNER, orderBy: {field: STARGAZERS, direction: DESC}) {
+    totalCount
+    nodes { name stargazerCount primaryLanguage { name } description isFork }
+  }
+  contributionsCollection { totalCommitContributions totalPullRequestContributions }
+  organizations(first: 10) { nodes { login name } }
+} }''' % login
+```
+
+### REST (GET https://api.github.com/...)
+```python
+headers = {"Authorization": f"bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"}
+# /users/{login} — profile
+# /users/{login}/repos?sort=stars&per_page=10 — top repos
+# /users/{login}/events/public?per_page=30 — recent activity
+# /search/users?q=language:rust+followers:<100 — find niche devs
+# /search/repositories?q=stars:10..500+language:zig — find hidden gems
+# /repos/{owner}/{repo}/contributors — find collaborators
+```
+
+## Strategy
+1. Read /data/crawl_log.json to see what's been done. Read /data/data/merged_network.json to get existing logins.
+2. Check rate limit: GET https://api.github.com/rate_limit
+3. **USE MOST OF YOUR API BUDGET.** You have 5,000 GraphQL + 5,000 REST calls per hour. Previous runs only used 70-370 total — that's 2-7% of the budget. You should aim to use ~4,000 GraphQL and ~2,000 REST calls per run. Leave 500 GraphQL + 500 REST as buffer. Check rate_limit periodically during your run and keep going until you're near the limit.
+4. Pick MANY expansion targets — explore 10-20+ people's networks per run, not just 2-3:
+   - High-scoring profiles whose networks haven't been explored yet
+   - Users appearing in multiple seed networks (strong signal)
+   - Contributors to interesting repos by existing high-scorers
+   - GitHub search: niche language + low followers combos (e.g., Zig, Nim, Gleam devs with <500 followers)
+   - People whose followers overlap heavily with our existing profiles
+5. For each target: fetch their followers/following, cross-reference with existing profiles.
+6. Profile promising NEW connections via GraphQL (young accounts, technical languages, real projects).
+7. Append new profiles to merged_network.json's "profiles" array. PRESERVE all existing data!
+8. Evaluate new profiles for promising_devs.json. If any are truly exceptional, append them.
+9. Update /data/crawl_log.json with what you explored and discovered.
+
+## Efficiency tips for maximizing API usage
+- Use GraphQL to batch profile lookups (you can fetch followers + following + repos in one query per user)
+- Write Python scripts to /tmp/ and run them — scripts can loop through many targets efficiently in a single tool call
+- Process targets in batches: write a script that iterates over 10+ targets, fetches all their networks, and saves results
+- Don't stop after finding a few promising devs — keep exploring until the API budget is nearly exhausted
+
+## Rules
+- NEVER overwrite or remove existing profiles. Only append new ones.
+- Always check if a login already exists before adding it.
+- Leave 500 GraphQL + 500 REST as buffer. USE THE REST of your API budget aggressively.
+- Write Python scripts to /tmp/ and run them for complex operations. Scripts can loop through many API calls efficiently.
+- Quality over quantity for PROMISING DEVS curation — but explore broadly. Profile hundreds of people, curate the exceptional few.
+- Log everything to crawl_log.json so future runs know what's been done.
+- Explore aggressively: 10-20+ expansion targets per run. Use scripts to batch API calls.
+- Set found_via and connections fields on new profiles to track provenance.
+- Periodically check rate_limit mid-run. If you have >1000 calls remaining, keep going!
+"""
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -259,10 +695,10 @@ async def serve_viz():
 
 @web_app.get("/data/graph.json")
 async def serve_graph_json():
-    graph_file = Path(f"{VOLUME_PATH}/data/graph.json")
-    if graph_file.exists():
-        return FileResponse(graph_file, media_type="application/json")
-    return JSONResponse({"error": "graph.json not found"}, status_code=404)
+    load_data()
+    if GRAPH_DATA and GRAPH_DATA.get("nodes"):
+        return JSONResponse(GRAPH_DATA)
+    return JSONResponse({"error": "graph not available"}, status_code=404)
 
 
 @web_app.get("/api/stats")
@@ -279,6 +715,61 @@ async def stats():
         "seeds": SEEDS,
         "top_languages": ALL_LANGUAGES[:20],
     }
+
+
+@web_app.get("/api/crawl-status")
+async def crawl_status_endpoint():
+    status = {}
+    for k in ["last_run", "last_cost", "last_turns", "last_skip", "last_profiles_added"]:
+        try:
+            status[k] = await crawl_state.get.aio(k)
+        except KeyError:
+            status[k] = None
+    return JSONResponse(status)
+
+
+@web_app.get("/sessions")
+async def serve_sessions():
+    html = Path("/app/sessions.html")
+    if html.exists():
+        return FileResponse(html, media_type="text/html")
+    return HTMLResponse("<h1>sessions.html not found</h1>", status_code=500)
+
+
+@web_app.get("/api/sessions")
+async def list_sessions():
+    sessions_dir = Path(f"{VOLUME_PATH}/sessions")
+    if not sessions_dir.exists():
+        return JSONResponse([])
+    sessions = []
+    for f in sorted(sessions_dir.glob("session_*.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text())
+            sessions.append({
+                "filename": f.name,
+                "timestamp": data.get("timestamp"),
+                "duration_seconds": data.get("duration_seconds"),
+                "cost_usd": data.get("cost_usd"),
+                "num_turns": data.get("num_turns"),
+                "initial_profile_count": data.get("initial_profile_count"),
+                "gql_remaining_start": data.get("gql_remaining_start"),
+                "rest_remaining_start": data.get("rest_remaining_start"),
+                "message_count": len(data.get("messages", [])),
+            })
+        except Exception:
+            continue
+    return JSONResponse(sessions)
+
+
+@web_app.get("/api/sessions/{filename}")
+async def get_session(filename: str):
+    # Sanitize filename
+    if "/" in filename or ".." in filename:
+        return JSONResponse({"error": "invalid filename"}, status_code=400)
+    session_file = Path(f"{VOLUME_PATH}/sessions/{filename}")
+    if not session_file.exists():
+        return JSONResponse({"error": "session not found"}, status_code=404)
+    return JSONResponse(json.loads(session_file.read_text()))
 
 
 @web_app.get("/api/profiles")
@@ -654,3 +1145,160 @@ Cite numbers. Be honest about gaps. Use WebSearch to look up their recent GitHub
 @modal.asgi_app()
 def web():
     return web_app
+
+
+# ---------------------------------------------------------------------------
+# Autonomous crawler (runs every 10 minutes via Modal cron)
+# ---------------------------------------------------------------------------
+
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("claude-oauth"),
+        modal.Secret.from_name("github-token"),
+    ],
+    schedule=modal.Cron("0 * * * *"),
+    timeout=3600,
+)
+async def expand_network():
+    import httpx
+
+    await volume.reload.aio()
+
+    # Read current state
+    merged = json.loads(Path(MERGED_FILE).read_text())
+    profile_count = len(merged.get("profiles", []))
+    existing_logins = {p["login"] for p in merged.get("profiles", [])}
+
+    # Load crawl log
+    crawl_log_path = Path(f"{VOLUME_PATH}/crawl_log.json")
+    try:
+        crawl_log = json.loads(crawl_log_path.read_text())
+    except FileNotFoundError:
+        crawl_log = {"runs": [], "total_profiles_added": 0, "explored_logins": []}
+
+    # Check rate limit
+    headers = {"Authorization": f"bearer {os.environ['GITHUB_TOKEN']}"}
+    resp = httpx.get("https://api.github.com/rate_limit", headers=headers)
+    rate = resp.json()
+    gql_remaining = rate["resources"]["graphql"]["remaining"]
+    rest_remaining = rate["resources"]["core"]["remaining"]
+
+    if gql_remaining < 300 and rest_remaining < 300:
+        print(f"Rate limit low: GQL={gql_remaining}, REST={rest_remaining}. Skipping.")
+        await crawl_state.put.aio("last_skip", time.time())
+        return
+
+    # Build context for Claude
+    num_runs = len(crawl_log.get('runs', []))
+    explored = crawl_log.get('explored_logins', [])
+    # Extract explored logins from runs if top-level key missing
+    if not explored:
+        for run in crawl_log.get('runs', []):
+            explored.extend(run.get('targets_explored', []))
+            explored.extend(run.get('expansion_targets', []))
+
+    context = f"""Dataset: {profile_count} profiles, {len(merged.get('seeds', []))} seeds.
+GitHub API rate limits: GraphQL={gql_remaining}/5000, REST={rest_remaining}/5000.
+Previous crawler runs: {num_runs}.
+Recently explored logins: {explored[-20:]}
+Existing logins count: {len(existing_logins)}"""
+
+    prompt = f"""{context}
+
+Expand the talent network. Read the existing data files, pick smart expansion targets, crawl their GitHub connections via the API, profile promising new developers, and save results back to the data files.
+
+IMPORTANT: You have ~{gql_remaining} GraphQL and ~{rest_remaining} REST API calls available. USE MOST OF THEM. Write Python scripts that batch-process many targets. Explore 10-20+ people's networks. Keep going until you're near the rate limit (check periodically with GET /rate_limit). Previous runs only used 2-7% of the budget — we want 60-80%+."""
+
+    from claude_agent_sdk import (
+        ClaudeAgentOptions, query as agent_query,
+        AssistantMessage, ResultMessage, TextBlock, ToolUseBlock, ToolResultBlock,
+    )
+
+    options = ClaudeAgentOptions(
+        allowed_tools=["Bash", "Read", "Write", "Glob", "Grep"],
+        permission_mode="bypassPermissions",
+        system_prompt=CRAWLER_SYSTEM_PROMPT,
+        max_turns=50,
+        model="claude-opus-4-6",
+        cwd="/data",
+        env={
+            "HOME": "/home/agent",
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
+            # CLAUDE_CODE_OAUTH_TOKEN is auto-detected by the SDK from env
+        },
+        include_partial_messages=True,
+        user="agent",
+    )
+
+    print(f"Starting crawler run. {profile_count} existing profiles, GQL={gql_remaining}, REST={rest_remaining}")
+
+    result = None
+    session_messages = []
+    run_start = time.time()
+    async for msg in agent_query(prompt=prompt, options=options):
+        if isinstance(msg, AssistantMessage):
+            msg_data = {"type": "assistant", "timestamp": time.time(), "blocks": []}
+            for block in msg.content:
+                if isinstance(block, TextBlock):
+                    msg_data["blocks"].append({"type": "text", "text": block.text})
+                elif isinstance(block, ToolUseBlock):
+                    msg_data["blocks"].append({
+                        "type": "tool_use",
+                        "tool": block.name,
+                        "id": block.id,
+                        "input": str(block.input)[:2000],
+                    })
+                elif isinstance(block, ToolResultBlock):
+                    msg_data["blocks"].append({
+                        "type": "tool_result",
+                        "tool_use_id": block.tool_use_id,
+                        "content": str(block.content)[:2000] if block.content else "",
+                    })
+            session_messages.append(msg_data)
+        elif isinstance(msg, ResultMessage):
+            result = msg
+            print(f"Crawler finished: cost=${getattr(msg, 'total_cost_usd', '?')}, turns={getattr(msg, 'num_turns', '?')}")
+
+    await volume.commit.aio()
+
+    # Save session transcript to volume
+    try:
+        sessions_dir = Path(f"{VOLUME_PATH}/sessions")
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        session_file = sessions_dir / f"session_{ts}.json"
+        session_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "duration_seconds": round(time.time() - run_start, 1),
+            "cost_usd": getattr(result, "total_cost_usd", None) if result else None,
+            "num_turns": getattr(result, "num_turns", None) if result else None,
+            "session_id": getattr(result, "session_id", None) if result else None,
+            "initial_profile_count": profile_count,
+            "gql_remaining_start": gql_remaining,
+            "rest_remaining_start": rest_remaining,
+            "prompt": prompt,
+            "messages": session_messages,
+        }
+        session_file.write_text(json.dumps(session_data))
+        await volume.commit.aio()
+        print(f"Saved session transcript: {session_file}")
+    except Exception as e:
+        print(f"Failed to save session transcript: {e}")
+
+    # Check if profiles were added
+    try:
+        new_merged = json.loads(Path(MERGED_FILE).read_text())
+        new_count = len(new_merged.get("profiles", []))
+        profiles_added = new_count - profile_count
+    except Exception:
+        profiles_added = 0
+
+    # Log to modal.Dict (async)
+    await crawl_state.put.aio("last_run", time.time())
+    await crawl_state.put.aio("last_cost", getattr(result, "total_cost_usd", None) if result else None)
+    await crawl_state.put.aio("last_turns", getattr(result, "num_turns", None) if result else None)
+    await crawl_state.put.aio("last_profiles_added", profiles_added)
+
+    print(f"Crawler done. Profiles added this run: {profiles_added}")

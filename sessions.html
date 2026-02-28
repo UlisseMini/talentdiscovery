@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crawler Sessions</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
+  :root {
+    --bg: #06080a; --surface: #12171f; --surface2: #1a2030;
+    --border: rgba(255,255,255,0.06); --border-bright: rgba(255,255,255,0.12);
+    --text: #e2e8f0; --text-dim: #8892a4; --text-faint: #5a6478;
+    --blue: #60a5fa; --gold: #f59e0b; --green: #34d399; --purple: #a78bfa;
+    --pink: #f472b6; --red: #f87171; --cyan: #22d3ee;
+    --radius: 12px; --radius-sm: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 0; min-height: 100vh;
+  }
+  header {
+    padding: 20px 32px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(18,23,31,0.85); backdrop-filter: blur(20px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 {
+    font-size: 11px; font-weight: 500; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--green);
+  }
+  header a {
+    color: var(--text-dim); text-decoration: none; font-size: 13px;
+  }
+  header a:hover { color: var(--text); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 32px; }
+
+  /* Session list */
+  .session-list { display: flex; flex-direction: column; gap: 8px; }
+  .session-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px;
+    cursor: pointer; transition: all 0.15s;
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  }
+  .session-card:hover { border-color: var(--border-bright); background: var(--surface2); }
+  .session-card.active { border-color: var(--blue); }
+  .session-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .session-time { font-size: 14px; font-weight: 600; color: var(--text); }
+  .session-stat {
+    font-size: 12px; color: var(--text-dim);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .session-stat .val { color: var(--text); font-weight: 500; }
+  .session-badges { display: flex; gap: 6px; }
+  .badge {
+    padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;
+  }
+  .badge-turns { background: rgba(96,165,250,0.12); color: var(--blue); }
+  .badge-cost { background: rgba(245,158,11,0.12); color: var(--gold); }
+  .badge-msgs { background: rgba(52,211,153,0.12); color: var(--green); }
+
+  /* Session detail */
+  .session-detail {
+    margin-top: 16px; display: none;
+  }
+  .session-detail.open { display: block; }
+
+  .message {
+    margin-bottom: 12px; border-left: 3px solid var(--border);
+    padding-left: 16px;
+  }
+  .message.assistant { border-left-color: var(--blue); }
+  .message-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .message-role {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .message-role.assistant { color: var(--blue); }
+  .message-ts {
+    font-size: 11px; color: var(--text-faint);
+  }
+
+  .block { margin-bottom: 8px; }
+  .block-text {
+    font-size: 13px; line-height: 1.6; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .block-tool {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); overflow: hidden;
+  }
+  .tool-header {
+    padding: 8px 12px; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .tool-header:hover { background: rgba(255,255,255,0.03); }
+  .tool-name { color: var(--purple); }
+  .tool-arrow { color: var(--text-faint); transition: transform 0.2s; font-size: 10px; }
+  .tool-arrow.open { transform: rotate(90deg); }
+  .tool-body {
+    display: none; padding: 8px 12px; border-top: 1px solid var(--border);
+    font-size: 12px; line-height: 1.5; color: var(--text-dim);
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 400px; overflow-y: auto;
+  }
+  .tool-body.open { display: block; }
+
+  .block-result {
+    background: rgba(52,211,153,0.05); border: 1px solid rgba(52,211,153,0.1);
+    border-radius: var(--radius-sm); overflow: hidden;
+  }
+  .result-header {
+    padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--green);
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .result-header:hover { background: rgba(52,211,153,0.03); }
+  .result-body {
+    display: none; padding: 8px 12px; border-top: 1px solid rgba(52,211,153,0.1);
+    font-size: 12px; line-height: 1.5; color: var(--text-dim);
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 400px; overflow-y: auto;
+  }
+  .result-body.open { display: block; }
+
+  .loading { text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-faint); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CRAWLER SESSIONS</h1>
+  <a href="/">Home</a>
+  <a href="/viz">Graph</a>
+  <a href="/promising">Promising</a>
+</header>
+
+<div class="container">
+  <div id="content"><div class="loading">Loading sessions...</div></div>
+</div>
+
+<script>
+let sessions = [];
+let openSession = null;
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '?';
+  const d = new Date(ts);
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZoneName: 'short'
+  });
+}
+
+function fmtDuration(secs) {
+  if (!secs) return '?';
+  if (secs < 60) return `${Math.round(secs)}s`;
+  return `${Math.floor(secs/60)}m ${Math.round(secs%60)}s`;
+}
+
+async function loadSessions() {
+  const resp = await fetch('/api/sessions');
+  sessions = await resp.json();
+  renderList();
+}
+
+function renderList() {
+  const el = document.getElementById('content');
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty">No crawler sessions yet. Sessions are saved after each crawler run.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="session-list">' + sessions.map((s, i) => `
+    <div class="session-card" data-idx="${i}" onclick="toggleSession(${i})">
+      <div class="session-meta">
+        <span class="session-time">${fmtTime(s.timestamp)}</span>
+        <span class="session-stat">Duration: <span class="val">${fmtDuration(s.duration_seconds)}</span></span>
+        <span class="session-stat">Profiles at start: <span class="val">${s.initial_profile_count || '?'}</span></span>
+        <span class="session-stat">API: <span class="val">${s.gql_remaining_start || '?'} GQL / ${s.rest_remaining_start || '?'} REST</span></span>
+      </div>
+      <div class="session-badges">
+        <span class="badge badge-turns">${s.num_turns || '?'} turns</span>
+        <span class="badge badge-cost">$${(s.cost_usd || 0).toFixed(2)}</span>
+        <span class="badge badge-msgs">${s.message_count || 0} msgs</span>
+      </div>
+    </div>
+    <div class="session-detail" id="detail-${i}"></div>
+  `).join('') + '</div>';
+}
+
+async function toggleSession(idx) {
+  const detail = document.getElementById(`detail-${idx}`);
+  const card = document.querySelector(`.session-card[data-idx="${idx}"]`);
+
+  if (detail.classList.contains('open')) {
+    detail.classList.remove('open');
+    card.classList.remove('active');
+    return;
+  }
+
+  // Close others
+  document.querySelectorAll('.session-detail.open').forEach(d => d.classList.remove('open'));
+  document.querySelectorAll('.session-card.active').forEach(c => c.classList.remove('active'));
+
+  card.classList.add('active');
+  detail.innerHTML = '<div class="loading">Loading session...</div>';
+  detail.classList.add('open');
+
+  const s = sessions[idx];
+  const resp = await fetch(`/api/sessions/${s.filename}`);
+  const data = await resp.json();
+
+  detail.innerHTML = renderMessages(data.messages || []);
+}
+
+function renderMessages(messages) {
+  if (!messages.length) return '<div class="empty">No messages recorded.</div>';
+
+  return messages.map((msg, mi) => {
+    const blocks = (msg.blocks || []).map((b, bi) => {
+      const uid = `${mi}-${bi}`;
+      if (b.type === 'text') {
+        return `<div class="block block-text">${esc(b.text)}</div>`;
+      }
+      if (b.type === 'tool_use') {
+        return `<div class="block block-tool">
+          <div class="tool-header" onclick="toggleTool('${uid}')">
+            <span class="tool-arrow" id="arrow-${uid}">&#9654;</span>
+            <span class="tool-name">${esc(b.tool)}</span>
+            <span style="color:var(--text-faint);font-size:11px">${esc((b.input || '').substring(0, 80))}${(b.input||'').length > 80 ? '...' : ''}</span>
+          </div>
+          <div class="tool-body" id="body-${uid}">${esc(b.input)}</div>
+        </div>`;
+      }
+      if (b.type === 'tool_result') {
+        return `<div class="block block-result">
+          <div class="result-header" onclick="toggleTool('${uid}')">
+            <span class="tool-arrow" id="arrow-${uid}">&#9654;</span>
+            Result
+          </div>
+          <div class="result-body" id="body-${uid}">${esc(b.content)}</div>
+        </div>`;
+      }
+      return '';
+    }).join('');
+
+    const ts = msg.timestamp ? new Date(msg.timestamp * 1000).toLocaleTimeString('en-US', {hour12: false}) : '';
+    return `<div class="message assistant">
+      <div class="message-header">
+        <span class="message-role assistant">Assistant</span>
+        <span class="message-ts">${ts}</span>
+      </div>
+      ${blocks}
+    </div>`;
+  }).join('');
+}
+
+function toggleTool(uid) {
+  const body = document.getElementById(`body-${uid}`);
+  const arrow = document.getElementById(`arrow-${uid}`);
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+loadSessions();
+</script>
+</body>
+</html>
