@@ -178,7 +178,8 @@ def _build_graph(profiles_by_login: dict, seeds: list[str], promising_devs: list
 
     candidates_3conn = []
     for login, p in profiles_by_login.items():
-        if login not in must_include and len(p.get("connections", {})) >= 3:
+        conns = p.get("connections", {})
+        if login not in must_include and isinstance(conns, dict) and len(conns) >= 3:
             candidates_3conn.append((login, p.get("cracked_score", 0)))
     candidates_3conn.sort(key=lambda x: -x[1])
 
@@ -216,10 +217,13 @@ def _build_graph(profiles_by_login: dict, seeds: list[str], promising_devs: list
     # From merged connections
     for login in selected:
         p = profiles_by_login.get(login, {})
-        for seed_login, rels in p.get("connections", {}).items():
+        conns = p.get("connections", {})
+        if not isinstance(conns, dict):
+            continue  # Skip profiles where connections is a list or other format
+        for seed_login, rels in conns.items():
             if seed_login not in selected:
                 continue
-            for rel in rels:
+            for rel in (rels if isinstance(rels, list) else []):
                 if rel == "follower":
                     directed_edges.add((login, seed_login))
                 elif rel == "following":
@@ -304,7 +308,7 @@ def _build_graph(profiles_by_login: dict, seeds: list[str], promising_devs: list
             "website": p.get("website") or "",
             "twitter": p.get("twitter") or "",
             "created_at": p.get("created_at") or "",
-            "connected_seeds": list(p.get("connections", {}).keys()) if p.get("connections") else [],
+            "connected_seeds": list(p.get("connections", {}).keys()) if isinstance(p.get("connections"), dict) else [],
             "pagerank": round(pagerank.get(login, 0), 6),
             "betweenness": round(betweenness.get(login, 0), 6),
             "community": communities.get(login, 0),
